@@ -1,6 +1,6 @@
 # gemini-agy-examples
 
-Examples and test suites for Google Gemini API Managed Agents running the Google Antigravity agent harness (`antigravity-preview-09-2026`).
+Examples and verification suites for **Google Gemini API Managed Agents** running the Google Antigravity agent harness (`antigravity-preview-09-2026`).
 
 ![Managed Agent Diagram](managed_agent_diagram.svg)
 
@@ -8,17 +8,17 @@ Examples and test suites for Google Gemini API Managed Agents running the Google
 
 | Script | Description |
 | :--- | :--- |
-| `test_snippet1_run_resume.py` | `interactions.create` with `environment="remote"` (isolated Linux sandbox), followed by resuming via `environment_id` and verifying sandbox file persistence. |
-| `test_snippet2_trigger.py` | `triggers.create` with cron schedule for an always-on agent. Verifies trigger configuration via `triggers.get` and cleans up. |
+| [`test_snippet1_run_resume.py`](test_snippet1_run_resume.py) | Streams a live agent interaction in an isolated remote Linux sandbox (`environment="remote"`), resumes in the same sandbox via `environment_id`, verifies file persistence, and exports the generated `analysis.html` dashboard locally before deleting the sandbox. |
+| [`test_snippet2_trigger.py`](test_snippet2_trigger.py) | Creates an always-on cron trigger (`triggers.create`) with domain allowlisting and optional credential injection, verifies its active status via `triggers.get`, and cleans up automatically. |
 
 ## Prerequisites
 
-- **Python ≥ 3.10** (e.g., Homebrew Python 3.15+)
-- `google-genai` SDK (≥ 2.30.1)
+- **Python ≥ 3.10**
+- `google-genai` SDK (`>= 2.30.1`)
 - `GEMINI_API_KEY` set in your environment (recommended via macOS Keychain):
 
 ```bash
-# Add to Keychain securely
+# Store key in macOS Keychain
 security add-generic-password -U -a "$USER" -s GEMINI_API_KEY -w
 
 # Load in ~/.zshrc
@@ -33,20 +33,36 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running the Tests
+## Usage
+
+### 1. Run & Resume in a Stateful Remote Sandbox
 
 ```bash
-# Test 1: Run and resume agent interaction with sandbox persistence check (defaults to gemini-3.8-flash)
+# Default run (uses gemini-3.8-flash)
 python test_snippet1_run_resume.py
 
-# Run with Gemini 4 Argon (requires Google AI Studio / GCP billing enabled)
+# Run with Gemini 4 Argon
 python test_snippet1_run_resume.py --argon
-# Or specify any supported model explicitly:
-python test_snippet1_run_resume.py --model gemini-4-argon
 
-# Keep sandbox alive without deleting:
+# Specify any supported model and custom output path
+python test_snippet1_run_resume.py --model gemini-4-argon --output dashboard.html
+
+# Preserve the remote sandbox after completion instead of deleting it
 python test_snippet1_run_resume.py --keep-env
+```
 
-# Test 2: Test always-on cron trigger creation (deletes trigger immediately after verification)
+### 2. Scheduled Cron Trigger (Always-On Agent)
+
+```bash
+# Test full trigger creation, verification, and cleanup without requiring a pre-registered secret
+python test_snippet2_trigger.py --no-credential
+
+# Configure the scheduled trigger to use Gemini 4 Argon
+python test_snippet2_trigger.py --no-credential --argon
+
+# Run with the default 'github-production' stored credential from the tweet snippet
 python test_snippet2_trigger.py
+
+# Leave the trigger active on the schedule (default: 09:00 America/New_York)
+python test_snippet2_trigger.py --no-credential --keep
 ```

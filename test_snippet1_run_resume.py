@@ -1,47 +1,127 @@
-"""Test for code image 1 in the tweet: run the agent, then resume in the same sandbox.
+"""Example 1: Run an Antigravity agent in a remote sandbox and resume statefully.
 
-Uses stream=True to stream live thoughts, searches, and tool executions
-directly to your terminal so you can watch the agent work in real time.
+Streams live thoughts, Google searches, shell executions, and model output
+directly to the terminal, exports the generated HTML artifact to local disk,
+and cleans up the remote sandbox.
 
 Usage:
-    export GEMINI_API_KEY=...
-    python test_snippet1_run_resume.py [--keep-env] [--model MODEL | --argon]
+    export GEMINI_API_KEY="..."
+    python test_snippet1_run_resume.py [--argon | --model MODEL] [--keep-env] [--output PATH]
 """
+
+from __future__ import annotations
+
 import argparse
+from dataclasses import dataclass
+from pathlib import Path
 import sys
 import time
-from types import SimpleNamespace
+from typing import Any
+import warnings
 
 from google import genai
 
-parser = argparse.ArgumentParser(description="Run Antigravity agent in a remote sandbox and resume.")
-parser.add_argument("--keep-env", action="store_true", help="Preserve the remote sandbox instead of deleting on completion.")
-parser.add_argument("--model", type=str, default=None, help="Underlying model for the agent (e.g. gemini-4-argon, gemini-3.8-flash).")
-parser.add_argument("--argon", action="store_true", help="Shorthand to run with Gemini 4 Argon (--model gemini-4-argon).")
-args = parser.parse_args()
+# Suppress experimental API warnings from the SDK for cleaner CLI output
+warnings.filterwarnings("ignore", message=".*usage is experimental.*")
 
-keep_env = args.keep_env
-model_name = "gemini-4-argon" if args.argon else args.model
-agent_config = {"type": "antigravity", "model": model_name} if model_name else None
+DEFAULT_AGENT = "antigravity-preview-09-2026"
+DEFAULT_MODEL_LABEL = "gemini-3.8-flash (agent default)"
+ARGON_MODEL = "gemini-4-argon"
+CANDIDATE_ARTIFACT_PATHS = ("workspace/analysis.html", "analysis.html")
 
-t_start = time.time()
 
-def log(tag, msg):
-    elapsed = time.time() - t_start
-    print(f"[{elapsed:5.1f}s] {tag} {msg}", flush=True)
+@dataclass(frozen=True)
+class InteractionResult:
+    """Holds the key identifiers and collected text from a streamed interaction."""
 
-client = genai.Client()
+    id: str | None
+    environment_id: str | None
+    output_text: str
 
-def stream_interaction(prompt, environment, previous_id=None):
-    """Executes an Antigravity agent interaction with real-time live event streaming."""
-    kwargs = {
-        "agent": "antigravity-preview-09-2026",
+
+class Logger:
+    """Simple elapsed-time terminal logger."""
+
+    def __init__(self) -> None:
+        self._start = time.monotonic()
+
+    @property
+    def elapsed(self) -> float:
+        return time.monotonic() - self._start
+
+    def log(self, icon: str, message: str) -> None:
+        print(f"[{self.elapsed:5.1f}s] {icon} {message}", flush=True)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Run the Antigravity agent in a remote Linux sandbox and resume statefully."
+    )
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Underlying Gemini model for the agent (e.g., gemini-4-argon, gemini-3.8-flash).",
+    )
+    model_group.add_argument(
+        "--argon",
+        action="store_true",
+        help=f"Shorthand to run with Gemini 4 Argon (--model {ARGON_MODEL}).",
+    )
+    parser.add_argument(
+        "--keep-env",
+        action="store_true",
+        help="Preserve the remote sandbox on completion instead of deleting it.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("analysis.html"),
+        help="Local file path where the generated dashboard artifact will be saved (default: analysis.html).",
+    )
+    return parser.parse_args(argv)
+
+
+def format_step_event(step: Any, logger: Logger) -> None:
+    """Log human-readable progress for an agent step."""
+    step_type = getattr(step, "type", "")
+    args = getattr(step, "arguments", None)
+
+    if step_type == "thought":
+        logger.log("💭", "Agent planning next action...")
+    elif "search" in step_type:
+        queries = getattr(args, "queries", "") if args else ""
+        logger.log("🔍", f"Google Search: {queries}")
+    elif "code" in step_type:
+        cmd = getattr(args, "command", getattr(args, "code", "")) if args else ""
+        snippet = str(cmd).strip().replace("\n", " ")[:70]
+        logger.log("⚡", f"Shell / Code execution: {snippet}")
+    elif step_type == "model_output":
+        logger.log("📝", "Agent response:\n" + "-" * 50)
+    elif step_type:
+        logger.log("🔧", f"Tool step: {step_type}")
+
+
+def stream_interaction(
+    client: genai.Client,
+    logger: Logger,
+    *,
+    prompt: str,
+    environment: str,
+    previous_id: str | None = None,
+    model: str | None = None,
+) -> InteractionResult:
+    """Execute an Antigravity agent interaction with real-time event streaming."""
+    kwargs: dict[str, Any] = {
+        "agent": DEFAULT_AGENT,
         "input": prompt,
         "environment": environment,
         "stream": True,
     }
-    if agent_config:
-        kwargs["agent_config"] = agent_config
+    if model:
+        kwargs["agent_config"] = {"type": "antigravity", "model": model}
     if previous_id:
         kwargs["previous_interaction_id"] = previous_id
 
@@ -50,45 +130,33 @@ def stream_interaction(prompt, environment, previous_id=None):
     except Exception as exc:
         err_msg = str(exc)
         if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
-            log("❌", f"Quota exceeded: {exc}")
-            print("\nNote: Gemini 4 Argon requires a Google AI Studio / GCP project with billing enabled.", file=sys.stderr)
+            logger.log("❌", f"Quota exceeded: {exc}")
+            print(
+                "\nNote: Models like Gemini 4 Argon require a Google AI Studio / GCP "
+                "project with billing enabled.",
+                file=sys.stderr,
+            )
         raise
-    
-    interaction_id = None
-    env_id = environment if isinstance(environment, str) and environment != "remote" else None
-    collected_text = []
 
-    for e in events:
-        etype = getattr(e, "event_type", "")
+    interaction_id: str | None = None
+    env_id: str | None = environment if environment != "remote" else None
+    collected_text: list[str] = []
 
-        if etype == "interaction.created":
-            if getattr(e, "interaction", None):
-                interaction_id = getattr(e.interaction, "id", None)
-                env_id = getattr(e.interaction, "environment_id", env_id)
-            log("🚀", f"Sandbox allocated: {env_id or 'provisioning...'}")
+    for event in events:
+        event_type = getattr(event, "event_type", "")
 
-        elif etype == "step.start":
-            step = getattr(e, "step", None)
-            stype = getattr(step, "type", "")
-            
-            if stype == "thought":
-                log("💭", "Agent planning next action...")
-            elif "search" in stype:
-                args = getattr(step, "arguments", None)
-                q = getattr(args, "queries", "") if args else ""
-                log("🔍", f"Google Search: {q}")
-            elif "code" in stype:
-                args = getattr(step, "arguments", None)
-                cmd = getattr(args, "command", getattr(args, "code", "")) if args else ""
-                log("⚡", f"Shell / Code execution: {cmd[:70]}")
-            elif stype == "model_output":
-                log("📝", "Agent response:\n" + "-" * 50)
-            elif stype:
-                log("🔧", f"Tool step: {stype}")
+        if event_type == "interaction.created":
+            interaction = getattr(event, "interaction", None)
+            if interaction:
+                interaction_id = getattr(interaction, "id", interaction_id)
+                env_id = getattr(interaction, "environment_id", env_id)
+            logger.log("🚀", f"Sandbox allocated: {env_id or 'provisioning...'}")
 
-        elif etype == "step.delta":
-            delta = getattr(e, "delta", None)
-            # Delta can be text delta or thought delta
+        elif event_type == "step.start":
+            format_step_event(getattr(event, "step", None), logger)
+
+        elif event_type == "step.delta":
+            delta = getattr(event, "delta", None)
             text = getattr(delta, "text", None)
             if not text and hasattr(delta, "content"):
                 text = getattr(delta.content, "text", "")
@@ -97,99 +165,158 @@ def stream_interaction(prompt, environment, previous_id=None):
                 sys.stdout.flush()
                 collected_text.append(text)
 
-        elif etype == "interaction.completed":
-            if getattr(e, "interaction", None):
-                env_id = getattr(e.interaction, "environment_id", env_id)
-                interaction_id = getattr(e.interaction, "id", interaction_id)
+        elif event_type == "interaction.completed":
+            interaction = getattr(event, "interaction", None)
+            if interaction:
+                env_id = getattr(interaction, "environment_id", env_id)
+                interaction_id = getattr(interaction, "id", interaction_id)
             print("\n" + "-" * 50)
-            log("✓", f"Step finished! (Interaction: {interaction_id})\n")
+            logger.log("✓", f"Step finished! (Interaction: {interaction_id})\n")
 
-    return SimpleNamespace(
+    return InteractionResult(
         id=interaction_id,
         environment_id=env_id,
         output_text="".join(collected_text),
     )
 
-# ---------------- Step 1: Initial Run (verbatim from tweet) ----------------
-print("\n" + "=" * 65)
-log("▶", "STEP 1/3: Provisioning remote sandbox and running Antigravity agent...")
-log(" ", f"Model: {model_name or 'gemini-3.8-flash (agent default)'}")
-log(" ", "Prompt: 'Research top 5 sustainable fashion brands & build analysis.html'")
-print("=" * 65)
 
-run = stream_interaction(
-    prompt="Research the top 5 sustainable fashion brands "
-           "and build a dashboard in analysis.html",
-    environment="remote",  # fresh, isolated Linux sandbox
-)
+def download_artifact(
+    client: genai.Client,
+    logger: Logger,
+    environment_id: str,
+    output_path: Path,
+) -> bool:
+    """Download the generated artifact from the remote sandbox to local disk."""
+    logger.log("📥", f"Step 4/4: Downloading generated artifact to {output_path}...")
+    for remote_path in CANDIDATE_ARTIFACT_PATHS:
+        try:
+            content = client.environments.files.download(
+                environment=environment_id,
+                path=remote_path,
+            )
+            output_path.write_bytes(content)
+            logger.log(
+                "✓",
+                f"Saved local artifact: {output_path} ({len(content):,} bytes from {remote_path})",
+            )
+            return True
+        except Exception:
+            continue
 
-# ---------------- Step 2: Follow-up in same sandbox (from tweet) -----------
-print("=" * 65)
-log("▶", f"STEP 2/3: Reusing sandbox ({run.environment_id}) for follow-up...")
-log(" ", "Prompt: 'Add a pricing-tier filter to the dashboard'")
-print("=" * 65)
+    logger.log("ℹ", "Could not locate analysis.html in sandbox via direct download.")
+    return False
 
-run2 = stream_interaction(
-    prompt="Add a pricing-tier filter to the dashboard",
-    environment=run.environment_id,
-    previous_id=run.id,
-)
 
-# ---------------- Step 3: Verification & Persistence Probe -----------------
-print("=" * 65)
-log("▶", f"STEP 3/3: Probing sandbox ({run.environment_id}) to verify persistence...")
-print("=" * 65)
+def cleanup_environment(
+    client: genai.Client,
+    logger: Logger,
+    environment_id: str | None,
+    keep_env: bool,
+) -> None:
+    """Delete the remote sandbox unless preservation was requested."""
+    if not environment_id:
+        return
+    if keep_env:
+        logger.log("🔒", f"Sandbox retained (--keep-env): {environment_id}")
+        return
 
-probe = stream_interaction(
-    prompt="Run `ls -la /workspace` and `grep -ci 'tier' analysis.html` (search for "
-           "analysis.html if it is elsewhere). Reply with the raw command output only.",
-    environment=run.environment_id,
-)
-
-checks = {
-    "run.environment_id is set": bool(run.environment_id),
-    "run2 reused the same sandbox": run2.environment_id == run.environment_id,
-    "run produced output_text": bool(run.output_text),
-    "run2 produced output_text": bool(run2.output_text),
-    "analysis.html preserved in sandbox": "analysis.html" in (probe.output_text or ""),
-}
-
-print("\n" + "=" * 65)
-print("FINAL VERIFICATION RESULTS:")
-for name, ok in checks.items():
-    print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
-print(f"Model used:          {model_name or 'gemini-3.8-flash (agent default)'}")
-print(f"Total pipeline time: {time.time()-t_start:.1f}s")
-print(f"Preserved Sandbox ID: {run.environment_id}")
-print("=" * 65 + "\n")
-
-# ---------------- Step 4: Export Artifact (before cleanup) -----------------
-log("📥", "Step 4: Downloading generated artifact (analysis.html) to local disk...")
-downloaded = False
-for candidate_path in ["workspace/analysis.html", "analysis.html"]:
     try:
-        content = client.environments.files.download(
-            environment=run.environment_id,
-            path=candidate_path,
+        client.environments.delete(id=environment_id)
+        logger.log("🧹", f"Sandbox {environment_id} deleted cleanly.")
+    except Exception as exc:
+        logger.log("ℹ", f"Sandbox retained ({exc!r}); auto-expires after 7 days.")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the multi-step sandbox creation, resumption, probe, and export pipeline."""
+    args = parse_args(argv)
+    model_name: str | None = ARGON_MODEL if args.argon else args.model
+    model_display = model_name or DEFAULT_MODEL_LABEL
+
+    logger = Logger()
+    client = genai.Client()
+    active_env_id: str | None = None
+
+    try:
+        # ---------------- Step 1: Initial Run ----------------
+        print("\n" + "=" * 65)
+        logger.log("▶", "STEP 1/4: Provisioning remote sandbox and running Antigravity agent...")
+        logger.log(" ", f"Model:  {model_display}")
+        logger.log(" ", "Prompt: 'Research top 5 sustainable fashion brands & build analysis.html'")
+        print("=" * 65)
+
+        run1 = stream_interaction(
+            client,
+            logger,
+            prompt=(
+                "Research the top 5 sustainable fashion brands "
+                "and build a dashboard in analysis.html"
+            ),
+            environment="remote",
+            model=model_name,
         )
-        with open("analysis.html", "wb") as f:
-            f.write(content)
-        log("✓", f"Successfully saved local file: analysis.html ({len(content)} bytes)")
-        downloaded = True
-        break
-    except Exception:
-        continue
+        active_env_id = run1.environment_id
+        if not active_env_id:
+            logger.log("❌", "Failed to obtain an environment_id from Step 1.")
+            return 1
 
-if not downloaded:
-    log("ℹ", "Could not locate analysis.html via direct download.")
+        # ---------------- Step 2: Follow-up in Same Sandbox ----------------
+        print("=" * 65)
+        logger.log("▶", f"STEP 2/4: Reusing sandbox ({active_env_id}) for follow-up...")
+        logger.log(" ", "Prompt: 'Add a pricing-tier filter to the dashboard'")
+        print("=" * 65)
 
-checks["analysis.html exported locally"] = downloaded
+        run2 = stream_interaction(
+            client,
+            logger,
+            prompt="Add a pricing-tier filter to the dashboard",
+            environment=active_env_id,
+            previous_id=run1.id,
+            model=model_name,
+        )
 
-if not keep_env and run.environment_id:
-    try:
-        client.environments.delete(id=run.environment_id)
-        log("🧹", "Sandbox deleted cleanly.")
-    except Exception as e:
-        log("ℹ", f"Sandbox retained ({e!r}); auto-expires after 7 days.")
+        # ---------------- Step 3: Verification & Persistence Probe ----------------
+        print("=" * 65)
+        logger.log("▶", f"STEP 3/4: Probing sandbox ({active_env_id}) to verify persistence...")
+        print("=" * 65)
 
-sys.exit(0 if all(checks.values()) else 1)
+        probe = stream_interaction(
+            client,
+            logger,
+            prompt=(
+                "Run `ls -la /workspace` and `grep -ci 'tier' analysis.html` (search for "
+                "analysis.html if it is elsewhere). Reply with the raw command output only."
+            ),
+            environment=active_env_id,
+            model=model_name,
+        )
+
+        # ---------------- Step 4: Export Artifact ----------------
+        downloaded = download_artifact(client, logger, active_env_id, args.output)
+
+        checks = {
+            "run1.environment_id is set": bool(run1.environment_id),
+            "run2 reused the same sandbox": run2.environment_id == run1.environment_id,
+            "run1 produced output_text": bool(run1.output_text),
+            "run2 produced output_text": bool(run2.output_text),
+            "analysis.html preserved in sandbox": "analysis.html" in probe.output_text,
+            "analysis.html exported locally": downloaded,
+        }
+
+        print("\n" + "=" * 65)
+        print("FINAL VERIFICATION RESULTS:")
+        for name, ok in checks.items():
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+        print(f"Model used:          {model_display}")
+        print(f"Total pipeline time: {logger.elapsed:.1f}s")
+        print(f"Sandbox ID:          {active_env_id}")
+        print("=" * 65 + "\n")
+
+        return 0 if all(checks.values()) else 1
+
+    finally:
+        cleanup_environment(client, logger, active_env_id, args.keep_env)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
