@@ -5,15 +5,25 @@ directly to your terminal so you can watch the agent work in real time.
 
 Usage:
     export GEMINI_API_KEY=...
-    python test_snippet1_run_resume.py [--keep-env]
+    python test_snippet1_run_resume.py [--keep-env] [--model MODEL | --argon]
 """
+import argparse
 import sys
 import time
 from types import SimpleNamespace
 
 from google import genai
 
-keep_env = "--keep-env" in sys.argv
+parser = argparse.ArgumentParser(description="Run Antigravity agent in a remote sandbox and resume.")
+parser.add_argument("--keep-env", action="store_true", help="Preserve the remote sandbox instead of deleting on completion.")
+parser.add_argument("--model", type=str, default=None, help="Underlying model for the agent (e.g. gemini-4-argon, gemini-3.8-flash).")
+parser.add_argument("--argon", action="store_true", help="Shorthand to run with Gemini 4 Argon (--model gemini-4-argon).")
+args = parser.parse_args()
+
+keep_env = args.keep_env
+model_name = "gemini-4-argon" if args.argon else args.model
+agent_config = {"type": "antigravity", "model": model_name} if model_name else None
+
 t_start = time.time()
 
 def log(tag, msg):
@@ -30,10 +40,19 @@ def stream_interaction(prompt, environment, previous_id=None):
         "environment": environment,
         "stream": True,
     }
+    if agent_config:
+        kwargs["agent_config"] = agent_config
     if previous_id:
         kwargs["previous_interaction_id"] = previous_id
 
-    events = client.interactions.create(**kwargs)
+    try:
+        events = client.interactions.create(**kwargs)
+    except Exception as exc:
+        err_msg = str(exc)
+        if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
+            log("❌", f"Quota exceeded: {exc}")
+            print("\nNote: Gemini 4 Argon requires a Google AI Studio / GCP project with billing enabled.", file=sys.stderr)
+        raise
     
     interaction_id = None
     env_id = environment if isinstance(environment, str) and environment != "remote" else None
@@ -94,6 +113,7 @@ def stream_interaction(prompt, environment, previous_id=None):
 # ---------------- Step 1: Initial Run (verbatim from tweet) ----------------
 print("\n" + "=" * 65)
 log("▶", "STEP 1/3: Provisioning remote sandbox and running Antigravity agent...")
+log(" ", f"Model: {model_name or 'gemini-3.8-flash (agent default)'}")
 log(" ", "Prompt: 'Research top 5 sustainable fashion brands & build analysis.html'")
 print("=" * 65)
 
@@ -138,6 +158,7 @@ print("\n" + "=" * 65)
 print("FINAL VERIFICATION RESULTS:")
 for name, ok in checks.items():
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+print(f"Model used:          {model_name or 'gemini-3.8-flash (agent default)'}")
 print(f"Total pipeline time: {time.time()-t_start:.1f}s")
 print(f"Preserved Sandbox ID: {run.environment_id}")
 print("=" * 65 + "\n")

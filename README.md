@@ -36,8 +36,16 @@ pip install -r requirements.txt
 ## Running the Tests
 
 ```bash
-# Test 1: Run and resume agent interaction with sandbox persistence check
+# Test 1: Run and resume agent interaction with sandbox persistence check (defaults to gemini-3.8-flash)
 python test_snippet1_run_resume.py
+
+# Run with Gemini 4 Argon (requires Google AI Studio / GCP billing enabled)
+python test_snippet1_run_resume.py --argon
+# Or specify any supported model explicitly:
+python test_snippet1_run_resume.py --model gemini-4-argon
+
+# Keep sandbox alive without deleting:
+python test_snippet1_run_resume.py --keep-env
 
 # Test 2: Test always-on cron trigger creation (deletes trigger immediately after verification)
 python test_snippet2_trigger.py
