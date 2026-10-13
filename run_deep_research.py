@@ -1,19 +1,19 @@
-"""Generic Deep Research & Analytics Dashboard Generator using an Antigravity Managed Agent.
+"""Generic Deep Research & Interactive Slide Deck Generator using an Antigravity Managed Agent.
 
 Provisions an isolated remote Linux sandbox, conducts multi-step web research on
-any topic, builds a self-contained interactive dashboard (`analytics.html`),
+any topic, builds a self-contained interactive slide deck website (`report.html`),
 iteratively refines it in the same stateful sandbox, and downloads the final
-HTML artifact to your local machine.
+HTML report to your local machine.
 
 Usage:
     export GEMINI_API_KEY="..."
 
-    # Research any topic and export analytics.html (with Gemini 4 Argon)
+    # Research any topic and export report.html slide deck (with Gemini 4 Argon)
     uv run python run_deep_research.py "Global solid-state battery landscape in 2026" --argon
 
     # Add custom follow-up refinement pass(es) in the same sandbox and open in browser
     uv run python run_deep_research.py "Open-source Rust web frameworks" --argon \\
-        --refine "Add a benchmark comparison chart and an interactive use-case filter" \\
+        --refine "Add a benchmark comparison slide and an interactive use-case filter" \\
         --open
 
     # Single-pass mode (skip the follow-up refinement turn)
@@ -40,12 +40,13 @@ warnings.filterwarnings("ignore", message=".*usage is experimental.*")
 DEFAULT_AGENT = "antigravity-preview-09-2026"
 DEFAULT_MODEL_LABEL = "gemini-3.8-flash (agent default)"
 ARGON_MODEL = "gemini-4-argon"
+REMOTE_ARTIFACT_NAME = "report.html"
 DEFAULT_TOPIC = "Top 5 sustainable fashion brands and their supply-chain metrics"
 DEFAULT_REFINEMENT = (
-    "Enhance the dashboard in /workspace/analytics.html by adding interactive "
-    "category/tier filters, sortable metric columns, and a key takeaways summary section."
+    f"Enhance the interactive slide deck in `/workspace/{REMOTE_ARTIFACT_NAME}` by adding "
+    "interactive in-slide filters/tabs, sortable comparison tables, expandable detail cards, "
+    "and a slide-grid overview toggle (`G` key or button) while keeping keyboard navigation smooth."
 )
-REMOTE_ARTIFACT_NAME = "analytics.html"
 CANDIDATE_ARTIFACT_PATHS = (
     f"workspace/{REMOTE_ARTIFACT_NAME}",
     REMOTE_ARTIFACT_NAME,
@@ -81,7 +82,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Conduct deep research on any topic inside a remote Antigravity sandbox "
-            "and generate a local analytics.html dashboard."
+            f"and generate a local {REMOTE_ARTIFACT_NAME} interactive slide deck website."
         )
     )
     parser.add_argument(
@@ -99,7 +100,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Follow-up refinement instruction(s) executed in the same stateful sandbox "
-            "(can be passed multiple times). Defaults to an interactive filter & summary enhancement pass."
+            "(can be passed multiple times). Defaults to an interactive slide deck enhancement pass."
         ),
     )
     refine_group.add_argument(
@@ -126,12 +127,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output",
         type=Path,
         default=Path(REMOTE_ARTIFACT_NAME),
-        help=f"Local file path to save the generated dashboard (default: {REMOTE_ARTIFACT_NAME}).",
+        help=f"Local file path to save the generated slide deck report (default: {REMOTE_ARTIFACT_NAME}).",
     )
     parser.add_argument(
         "--open",
         action="store_true",
-        help="Automatically open the exported HTML dashboard in your default web browser.",
+        help="Automatically open the exported HTML slide deck in your default web browser.",
     )
     parser.add_argument(
         "--keep-env",
@@ -142,12 +143,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def build_initial_prompt(topic: str) -> str:
-    """Construct the initial research and dashboard generation prompt."""
+    """Construct the initial research and interactive slide deck generation prompt."""
     return (
         f"Research the following topic thoroughly using Google Search: {topic}\n\n"
-        "Synthesize your findings, quantitative metrics, comparisons, and sources, "
-        f"and build a polished, self-contained, interactive HTML/CSS/JS analytics dashboard "
-        f"saved to `/workspace/{REMOTE_ARTIFACT_NAME}`."
+        "Synthesize your findings, quantitative metrics, comparisons, and verified sources, "
+        "and build a polished, self-contained, interactive HTML/CSS/JS **slide deck website** "
+        f"saved to `/workspace/{REMOTE_ARTIFACT_NAME}`.\n\n"
+        "Structure it as a rich multi-slide presentation (e.g., Title & Executive Summary, "
+        "Key Trends & Market/Domain Overview, Quantitative Data & Visual Charts, "
+        "Comparative Matrix, Deep-Dive Case Studies, Strategic Takeaways & Sources) featuring:\n"
+        "- Smooth keyboard navigation (`ArrowLeft` / `ArrowRight`, `Space`), on-screen prev/next controls, "
+        "a progress bar, slide counter (`1 / N`), and a clickable table-of-contents / slide jumper.\n"
+        "- Clean, modern presentation typography, visual data cards/charts, and responsive widescreen slide layout."
     )
 
 
@@ -279,8 +286,8 @@ def download_artifact(
     environment_id: str,
     output_path: Path,
 ) -> bool:
-    """Download the generated dashboard artifact from the remote sandbox to local disk."""
-    logger.log("📥", f"Downloading generated dashboard to {output_path}...")
+    """Download the generated slide deck report artifact from the remote sandbox to local disk."""
+    logger.log("📥", f"Downloading generated slide deck report to {output_path}...")
     for remote_path in CANDIDATE_ARTIFACT_PATHS:
         try:
             content = client.environments.files.download(
@@ -291,7 +298,7 @@ def download_artifact(
             output_path.write_bytes(content)
             logger.log(
                 "✓",
-                f"Saved local dashboard: {output_path} ({len(content):,} bytes from {remote_path})",
+                f"Saved local slide deck report: {output_path} ({len(content):,} bytes from {remote_path})",
             )
             return True
         except errors.APIError:
@@ -337,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
     active_env_id: str | None = None
 
     try:
-        # ---------------- Step 1: Initial Deep Research & Dashboard Build ----------------
+        # ---------------- Step 1: Initial Deep Research & Slide Deck Build ----------------
         print("\n" + "=" * 65)
         logger.log("▶", f"STEP 1/{total_steps}: Provisioning sandbox & researching topic...")
         logger.log(" ", f"Topic:  {args.topic}")
@@ -381,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # ---------------- Final Step: Export Artifact ----------------
         print("=" * 65)
-        logger.log("▶", f"STEP {total_steps}/{total_steps}: Exporting dashboard from sandbox...")
+        logger.log("▶", f"STEP {total_steps}/{total_steps}: Exporting slide deck report from sandbox...")
         print("=" * 65)
         downloaded = download_artifact(client, logger, active_env_id, args.output)
 
@@ -389,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
             "sandbox environment_id allocated": bool(run1.environment_id),
             "initial research produced output": bool(run1.output_text),
             "stateful sandbox reused across turns": last_run.environment_id == run1.environment_id,
-            f"dashboard exported to {args.output}": downloaded,
+            f"slide deck report exported to {args.output}": downloaded,
         }
 
         print("\n" + "=" * 65)
@@ -398,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
         print(f"Topic:               {args.topic}")
         print(f"Model used:          {model_display}")
-        print(f"Local Dashboard:     {args.output.resolve()}")
+        print(f"Local Report:        {args.output.resolve()}")
         print(f"Total pipeline time: {logger.elapsed:.1f}s")
         print(f"Sandbox ID:          {active_env_id}")
         print("=" * 65 + "\n")

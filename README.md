@@ -8,7 +8,7 @@ Examples and CLI tools for **Google Gemini API Managed Agents** running the Goog
 
 | Script | Mode | What It Does |
 | :--- | :--- | :--- |
-| [`run_deep_research.py`](run_deep_research.py) | **Automated Pipeline** | Provisions a fresh remote Linux sandbox, researches any topic via Google Search, builds an interactive `analytics.html` dashboard, refines it statefully in a second pass, downloads the HTML locally, and deletes the sandbox. |
+| [`run_deep_research.py`](run_deep_research.py) | **Automated Pipeline** | Provisions a fresh remote Linux sandbox, researches any topic via Google Search, builds an interactive `report.html` slide deck website, refines it statefully in a second pass, downloads the HTML locally, and deletes the sandbox. |
 | [`interactive_cli.py`](interactive_cli.py) | **Interactive REPL** | Opens a live terminal chat session attached to a remote Linux sandbox. Supports multi-turn coding/research, live SSE streaming, and direct file transfers (`/ls`, `/upload`, `/download`, `/fork`, `/attach`, `/detach`). |
 | [`schedule_trigger.py`](schedule_trigger.py) | **Cloud Cron Job** | Registers an unattended **cloud cron schedule** (`client.triggers`) on Google's servers so an agent wakes up automatically (e.g., every day at 9:00 AM) without your machine running. Every scheduled run reuses the **same persistent sandbox** so files accumulate over time. |
 
@@ -35,17 +35,17 @@ uv sync --frozen
 
 ---
 
-## 1. Deep Research & Analytics Dashboard (`run_deep_research.py`)
+## 1. Deep Research & Interactive Slide Deck Generator (`run_deep_research.py`)
 
-Runs a multi-step research workflow in a remote sandbox and exports a self-contained `analytics.html` dashboard to your local machine.
+Runs a multi-step research workflow in a remote sandbox and exports a self-contained `report.html` interactive slide deck website to your local machine.
 
 ```bash
-# Research any topic and generate analytics.html (powered by Gemini 4 Argon)
+# Research any topic and generate report.html slide deck (powered by Gemini 4 Argon)
 uv run python run_deep_research.py "Global solid-state battery landscape in 2026" --argon
 
 # Pass custom follow-up refinement instructions in the same sandbox and open in browser
 uv run python run_deep_research.py "Open-source Rust web frameworks" --argon \
-  --refine "Add a benchmark comparison chart and an interactive use-case filter" \
+  --refine "Add a benchmark comparison slide and an interactive use-case filter" \
   --open
 
 # Single-pass mode (skip the follow-up refinement turn)
