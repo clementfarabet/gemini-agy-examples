@@ -93,17 +93,21 @@ def format_step_event(step: Any, logger: Logger) -> None:
 
     if step_type == "thought":
         logger.log("💭", "Agent planning next action...")
-    elif "search" in step_type:
+    elif step_type == "google_search_call":
         queries = getattr(args, "queries", "") if args else ""
         logger.log("🔍", f"Google Search: {queries}")
-    elif "code" in step_type:
+    elif step_type == "code_execution_call":
         cmd = getattr(args, "command", getattr(args, "code", "")) if args else ""
         snippet = str(cmd).strip().replace("\n", " ")[:70]
-        logger.log("⚡", f"Shell / Code execution: {snippet}")
+        if snippet:
+            logger.log("⚡", f"Shell / Code execution: {snippet}")
+    elif step_type == "function_call":
+        fn_name = getattr(step, "name", "") or "tool"
+        logger.log("🔧", f"Tool call: {fn_name}")
     elif step_type == "model_output":
         logger.log("📝", "Agent response:\n" + "-" * 50)
-    elif step_type:
-        logger.log("🔧", f"Tool step: {step_type}")
+    elif step_type and not step_type.endswith("_result"):
+        logger.log("🔧", f"Step: {step_type}")
 
 
 def stream_interaction(

@@ -10,6 +10,7 @@ Examples and verification suites for **Google Gemini API Managed Agents** runnin
 | :--- | :--- |
 | [`test_snippet1_run_resume.py`](test_snippet1_run_resume.py) | Streams a live agent interaction in an isolated remote Linux sandbox (`environment="remote"`), resumes in the same sandbox via `environment_id`, verifies file persistence, and exports the generated `analysis.html` dashboard locally before deleting the sandbox. |
 | [`test_snippet2_trigger.py`](test_snippet2_trigger.py) | Creates an always-on cron trigger (`triggers.create`) with domain allowlisting and optional credential injection, verifies its active status via `triggers.get`, and cleans up automatically. |
+| [`test_snippet3_interactive_cli.py`](test_snippet3_interactive_cli.py) | Full interactive local REPL for chatting with a remote Antigravity agent in real time, with live SSE streaming, tab-completed slash commands (`/ls`, `/upload`, `/download`, `/model`, `/argon`, `/clear`, `/reset`, `/envs`, `/attach`), and automatic sandbox lifecycle management. |
 
 ## Prerequisites
 
@@ -62,4 +63,27 @@ uv run python test_snippet2_trigger.py
 
 # Leave the trigger active on the schedule (default: 09:00 America/New_York)
 uv run python test_snippet2_trigger.py --no-credential --keep
+```
+
+### 3. Interactive Remote Agent CLI (REPL)
+
+```bash
+# Launch interactive session (provisions a remote Linux sandbox on your first prompt)
+uv run python test_snippet3_interactive_cli.py
+
+# Launch interactive session powered by Gemini 4 Argon
+uv run python test_snippet3_interactive_cli.py --argon
+
+# Attach to an existing remote sandbox ID
+uv run python test_snippet3_interactive_cli.py --env-id <ENVIRONMENT_ID>
+
+# Built-in REPL Slash Commands:
+#   /ls [path]                  List files in the remote sandbox
+#   /upload <local> [remote]    Upload a local file into the sandbox
+#   /download <remote> [local]  Download a file from the sandbox to local disk
+#   /model <name> | /argon      Switch the underlying model on the fly
+#   /clear                      Clear conversation history while keeping sandbox files
+#   /reset                      Delete current sandbox and start fresh
+#   /envs | /attach <id>        List or attach to existing remote sandboxes
+#   /status | /help | /quit     Inspect session status, help, or exit cleanly
 ```
