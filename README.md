@@ -78,12 +78,13 @@ uv run python test_snippet3_interactive_cli.py --argon
 uv run python test_snippet3_interactive_cli.py --env-id <ENVIRONMENT_ID>
 
 # Built-in REPL Slash Commands:
-#   /ls [path]                  List files in the remote sandbox
-#   /upload <local> [remote]    Upload a local file into the sandbox
+#   /new | /fork                Provision a fresh sandbox or clone the current one
+#   /ls [path]                  List files in the remote sandbox (auto-provisions if needed)
+#   /upload <local> [remote]    Upload a local file into the sandbox (auto-provisions if needed)
 #   /download <remote> [local]  Download a file from the sandbox to local disk
 #   /model <name> | /argon      Switch the underlying model on the fly
 #   /clear                      Clear conversation history while keeping sandbox files
-#   /reset                      Delete current sandbox and start fresh
+#   /reset                      Delete current sandbox and provision a fresh one
 #   /envs | /attach <id>        List or attach to existing remote sandboxes
 #   /status | /help | /quit     Inspect session status, help, or exit cleanly
 ```

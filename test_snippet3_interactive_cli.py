@@ -49,6 +49,8 @@ ARGON_MODEL = "gemini-4-argon"
 SLASH_COMMANDS = (
     "/help",
     "/status",
+    "/new",
+    "/fork",
     "/ls",
     "/download",
     "/upload",
@@ -298,19 +300,49 @@ def run_agent_turn(
     return True
 
 
+def ensure_sandbox(
+    client: genai.Client,
+    session: SessionState,
+    *,
+    from_environment: str | None = None,
+) -> str | None:
+    """Ensure an active remote sandbox exists, provisioning one via environments.create() if needed."""
+    if session.environment_id and not from_environment:
+        return session.environment_id
+
+    try:
+        kwargs: dict[str, Any] = {}
+        if from_environment:
+            kwargs["from_environment"] = from_environment
+        env = client.environments.create(**kwargs)
+        env_id = getattr(env, "id", None)
+        if env_id:
+            session.environment_id = env_id
+            session.previous_interaction_id = None
+            session.created_env_ids.add(env_id)
+            action = f"Forked from {from_environment} ->" if from_environment else "Provisioned new sandbox:"
+            print(f"🚀 {action} {env_id}")
+        return env_id
+    except errors.APIError as exc:
+        print(f"❌ Failed to provision sandbox ({exc.code}): {exc.message}")
+        return None
+
+
 def print_help() -> None:
     """Print available interactive slash commands."""
     print(
         "\nAvailable Slash Commands:\n"
         "  /help                             Show this help message\n"
         "  /status                           Show current sandbox, model, and session stats\n"
+        "  /new                              Explicitly provision a fresh remote sandbox now\n"
+        "  /fork                             Clone current sandbox into a new independent sandbox\n"
         "  /ls [remote_path]                 List files in the remote sandbox (default: workspace)\n"
         "  /download <remote> [local_path]   Download a file from the sandbox to local disk\n"
-        "  /upload <local_path> [remote]     Upload a local file into the remote sandbox\n"
+        "  /upload <local_path> [remote]     Upload a local file into the sandbox (auto-provisions if needed)\n"
         "  /model [model_name]               Switch underlying model (or omit name to use default)\n"
         "  /argon                            Shorthand for `/model gemini-4-argon`\n"
         "  /clear                            Clear chat history while keeping sandbox files\n"
-        "  /reset                            Delete current sandbox and start fresh on next turn\n"
+        "  /reset                            Delete current sandbox and provision a fresh one\n"
         "  /envs                             List active remote sandboxes in your project\n"
         "  /attach <environment_id>          Switch session to an existing remote sandbox ID\n"
         "  /quit, /exit                      Exit CLI and clean up sandbox (unless --keep-env)\n"
@@ -339,12 +371,25 @@ def handle_slash_command(
             f"\nSession Status:\n"
             f"  Agent:             {DEFAULT_AGENT}\n"
             f"  Underlying Model:  {session.model_display}\n"
-            f"  Sandbox ID:        {session.environment_id or '(not provisioned yet — send a prompt first)'}\n"
+            f"  Sandbox ID:        {session.environment_id or '(not provisioned yet — send a prompt or `/new`)'}\n"
             f"  Last Interaction:  {session.previous_interaction_id or '(none)'}\n"
             f"  Completed Turns:   {session.turns}\n"
             f"  Cumulative Tokens: {session.total_session_tokens:,}\n"
             f"  Keep Sandbox:      {session.keep_env}\n"
         )
+        return True
+
+    if cmd == "/new":
+        session.environment_id = None
+        ensure_sandbox(client, session)
+        return True
+
+    if cmd == "/fork":
+        source_env = args[0] if args else session.environment_id
+        if not source_env:
+            print("ℹ No active sandbox to fork. Use `/new` or `/fork <environment_id>`.")
+            return True
+        ensure_sandbox(client, session, from_environment=source_env)
         return True
 
     if cmd == "/argon":
@@ -375,7 +420,7 @@ def handle_slash_command(
                 print(f"⚠️ Could not delete sandbox ({exc.code}): {exc.message}")
         session.environment_id = None
         session.previous_interaction_id = None
-        print("✨ Session reset. A fresh sandbox will be provisioned on your next prompt.")
+        ensure_sandbox(client, session)
         return True
 
     if cmd == "/envs":
@@ -406,8 +451,7 @@ def handle_slash_command(
         return True
 
     if cmd == "/ls":
-        if not session.environment_id:
-            print("ℹ No active sandbox yet. Send a prompt or `/attach <env_id>` first.")
+        if not ensure_sandbox(client, session):
             return True
         remote_path = args[0] if args else "workspace"
         try:
@@ -465,15 +509,14 @@ def handle_slash_command(
         return True
 
     if cmd == "/upload":
-        if not session.environment_id:
-            print("ℹ No active sandbox yet. Send a prompt or `/attach <env_id>` first.")
-            return True
         if not args:
             print("Usage: /upload <local_path> [remote_path]")
             return True
         local_src = Path(args[0]).expanduser()
         if not local_src.is_file():
             print(f"❌ Local file not found: {local_src}")
+            return True
+        if not ensure_sandbox(client, session):
             return True
         remote_dest = args[1] if len(args) > 1 else f"workspace/{local_src.name}"
         mime_type, _ = mimetypes.guess_type(local_src.name)
