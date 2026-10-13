@@ -1,0 +1,13 @@
+[project]
+name = "gemini-agy-examples"
+version = "0.1.0"
+description = "Examples and verification suites for Google Gemini API Managed Agents running the Antigravity agent harness."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai>=2.30.1",
+]
+
+[project.urls]
+Repository = "https://github.com/clementfarabet/gemini-agy-examples"
+Issues = "https://github.com/clementfarabet/gemini-agy-examples/issues"

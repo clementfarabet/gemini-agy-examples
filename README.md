@@ -13,8 +13,7 @@ Examples and verification suites for **Google Gemini API Managed Agents** runnin
 
 ## Prerequisites
 
-- **Python ≥ 3.10**
-- `google-genai` SDK (`>= 2.30.1`)
+- **Python ≥ 3.10** and [**uv**](https://docs.astral.sh/uv/) (`brew install uv`)
 - `GEMINI_API_KEY` set in your environment (recommended via macOS Keychain):
 
 ```bash
@@ -28,9 +27,7 @@ export GEMINI_API_KEY="$(security find-generic-password -a "$USER" -s GEMINI_API
 ## Setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --frozen
 ```
 
 ## Usage
@@ -39,30 +36,30 @@ pip install -r requirements.txt
 
 ```bash
 # Default run (uses gemini-3.8-flash)
-python test_snippet1_run_resume.py
+uv run python test_snippet1_run_resume.py
 
 # Run with Gemini 4 Argon
-python test_snippet1_run_resume.py --argon
+uv run python test_snippet1_run_resume.py --argon
 
 # Specify any supported model and custom output path
-python test_snippet1_run_resume.py --model gemini-4-argon --output dashboard.html
+uv run python test_snippet1_run_resume.py --model gemini-4-argon --output dashboard.html
 
 # Preserve the remote sandbox after completion instead of deleting it
-python test_snippet1_run_resume.py --keep-env
+uv run python test_snippet1_run_resume.py --keep-env
 ```
 
 ### 2. Scheduled Cron Trigger (Always-On Agent)
 
 ```bash
 # Test full trigger creation, verification, and cleanup without requiring a pre-registered secret
-python test_snippet2_trigger.py --no-credential
+uv run python test_snippet2_trigger.py --no-credential
 
 # Configure the scheduled trigger to use Gemini 4 Argon
-python test_snippet2_trigger.py --no-credential --argon
+uv run python test_snippet2_trigger.py --no-credential --argon
 
 # Run with the default 'github-production' stored credential from the tweet snippet
-python test_snippet2_trigger.py
+uv run python test_snippet2_trigger.py
 
 # Leave the trigger active on the schedule (default: 09:00 America/New_York)
-python test_snippet2_trigger.py --no-credential --keep
+uv run python test_snippet2_trigger.py --no-credential --keep
 ```
