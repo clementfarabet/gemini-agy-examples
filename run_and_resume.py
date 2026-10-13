@@ -6,7 +6,7 @@ and cleans up the remote sandbox.
 
 Usage:
     export GEMINI_API_KEY="..."
-    uv run python test_snippet1_run_resume.py [--argon | --model MODEL] [--keep-env] [--output PATH]
+    uv run python run_and_resume.py [--argon | --model MODEL] [--keep-env] [--output PATH]
 """
 
 from __future__ import annotations

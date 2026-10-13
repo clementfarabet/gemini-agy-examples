@@ -9,16 +9,16 @@ Usage:
     export GEMINI_API_KEY="..."
 
     # Launch interactive REPL (defaults to gemini-3.8-flash)
-    uv run python test_snippet3_interactive_cli.py
+    uv run python interactive_cli.py
 
     # Launch interactive REPL with Gemini 4 Argon
-    uv run python test_snippet3_interactive_cli.py --argon
+    uv run python interactive_cli.py --argon
 
     # Attach to an existing remote sandbox ID
-    uv run python test_snippet3_interactive_cli.py --env-id <ENVIRONMENT_ID>
+    uv run python interactive_cli.py --env-id <ENVIRONMENT_ID>
 
     # Run a single prompt non-interactively and exit
-    uv run python test_snippet3_interactive_cli.py -p "Create hello.py and run it"
+    uv run python interactive_cli.py -p "Create hello.py and run it"
 """
 
 from __future__ import annotations

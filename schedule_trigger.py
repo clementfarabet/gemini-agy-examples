@@ -11,7 +11,7 @@ Prerequisite note:
 
 Usage:
     export GEMINI_API_KEY="..."
-    uv run python test_snippet2_trigger.py [--keep] [--no-credential | --credential NAME] [--argon | --model MODEL]
+    uv run python schedule_trigger.py [--keep] [--no-credential | --credential NAME] [--argon | --model MODEL]
 """
 
 from __future__ import annotations

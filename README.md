@@ -8,9 +8,9 @@ Examples and verification suites for **Google Gemini API Managed Agents** runnin
 
 | Script | Description |
 | :--- | :--- |
-| [`test_snippet1_run_resume.py`](test_snippet1_run_resume.py) | Streams a live agent interaction in an isolated remote Linux sandbox (`environment="remote"`), resumes in the same sandbox via `environment_id`, verifies file persistence, and exports the generated `analysis.html` dashboard locally before deleting the sandbox. |
-| [`test_snippet2_trigger.py`](test_snippet2_trigger.py) | Creates an always-on cron trigger (`triggers.create`) with domain allowlisting and optional credential injection, verifies its active status via `triggers.get`, and cleans up automatically. |
-| [`test_snippet3_interactive_cli.py`](test_snippet3_interactive_cli.py) | Full interactive local REPL for chatting with a remote Antigravity agent in real time, with live SSE streaming, tab-completed slash commands (`/ls`, `/upload`, `/download`, `/model`, `/argon`, `/clear`, `/reset`, `/envs`, `/attach`), and automatic sandbox lifecycle management. |
+| [`run_and_resume.py`](run_and_resume.py) | Streams a live agent interaction in an isolated remote Linux sandbox (`environment="remote"`), resumes in the same sandbox via `environment_id`, verifies file persistence, and exports the generated `analysis.html` dashboard locally before deleting the sandbox. |
+| [`schedule_trigger.py`](schedule_trigger.py) | Creates an always-on cron trigger (`triggers.create`) with domain allowlisting and optional credential injection, verifies its active status via `triggers.get`, and cleans up automatically. |
+| [`interactive_cli.py`](interactive_cli.py) | Full interactive local REPL for chatting with a remote Antigravity agent in real time, with live SSE streaming, tab-completed slash commands (`/new`, `/fork`, `/ls`, `/upload`, `/download`, `/model`, `/argon`, `/clear`, `/reset`, `/envs`, `/attach`, `/detach`), and automatic sandbox lifecycle management. |
 
 ## Prerequisites
 
@@ -33,49 +33,49 @@ uv sync --frozen
 
 ## Usage
 
-### 1. Run & Resume in a Stateful Remote Sandbox
+### 1. Run & Resume in a Stateful Remote Sandbox (`run_and_resume.py`)
 
 ```bash
 # Default run (uses gemini-3.8-flash)
-uv run python test_snippet1_run_resume.py
+uv run python run_and_resume.py
 
 # Run with Gemini 4 Argon
-uv run python test_snippet1_run_resume.py --argon
+uv run python run_and_resume.py --argon
 
 # Specify any supported model and custom output path
-uv run python test_snippet1_run_resume.py --model gemini-4-argon --output dashboard.html
+uv run python run_and_resume.py --model gemini-4-argon --output dashboard.html
 
 # Preserve the remote sandbox after completion instead of deleting it
-uv run python test_snippet1_run_resume.py --keep-env
+uv run python run_and_resume.py --keep-env
 ```
 
-### 2. Scheduled Cron Trigger (Always-On Agent)
+### 2. Scheduled Cron Trigger (`schedule_trigger.py`)
 
 ```bash
 # Test full trigger creation, verification, and cleanup without requiring a pre-registered secret
-uv run python test_snippet2_trigger.py --no-credential
+uv run python schedule_trigger.py --no-credential
 
 # Configure the scheduled trigger to use Gemini 4 Argon
-uv run python test_snippet2_trigger.py --no-credential --argon
+uv run python schedule_trigger.py --no-credential --argon
 
-# Run with the default 'github-production' stored credential from the tweet snippet
-uv run python test_snippet2_trigger.py
+# Run with the default 'github-production' stored credential
+uv run python schedule_trigger.py
 
 # Leave the trigger active on the schedule (default: 09:00 America/New_York)
-uv run python test_snippet2_trigger.py --no-credential --keep
+uv run python schedule_trigger.py --no-credential --keep
 ```
 
-### 3. Interactive Remote Agent CLI (REPL)
+### 3. Interactive Remote Agent CLI (`interactive_cli.py`)
 
 ```bash
 # Launch interactive session (provisions a remote Linux sandbox on your first prompt)
-uv run python test_snippet3_interactive_cli.py
+uv run python interactive_cli.py
 
 # Launch interactive session powered by Gemini 4 Argon
-uv run python test_snippet3_interactive_cli.py --argon
+uv run python interactive_cli.py --argon
 
 # Attach to an existing remote sandbox ID
-uv run python test_snippet3_interactive_cli.py --env-id <ENVIRONMENT_ID>
+uv run python interactive_cli.py --env-id <ENVIRONMENT_ID>
 
 # Built-in REPL Slash Commands:
 #   /new | /fork                Provision a fresh sandbox or clone the current one
