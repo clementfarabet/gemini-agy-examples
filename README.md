@@ -1,16 +1,18 @@
 # gemini-agy-examples
 
-Examples and tools for **Google Gemini API Managed Agents** running the Google Antigravity agent harness (`antigravity-preview-09-2026`).
+Examples and CLI tools for **Google Gemini API Managed Agents** running the Google Antigravity agent harness (`antigravity-preview-09-2026`).
 
 ![Managed Agent Diagram](managed_agent_diagram.svg)
 
-## Overview
+## Overview: Three Ways to Run an Antigravity Agent
 
-| Script | Description |
-| :--- | :--- |
-| [`run_deep_research.py`](run_deep_research.py) | Generic Deep Research & Dashboard generator: provisions an isolated remote Linux sandbox, researches any topic via Google Search, builds an interactive `analytics.html` dashboard, refines it statefully in the same sandbox, and exports the final HTML locally. |
-| [`schedule_trigger.py`](schedule_trigger.py) | Creates an always-on cron trigger (`triggers.create`) with domain allowlisting and optional credential injection, verifies its active status via `triggers.get`, and cleans up automatically. |
-| [`interactive_cli.py`](interactive_cli.py) | Full interactive local REPL for chatting with a remote Antigravity agent in real time, with live SSE streaming, tab-completed slash commands (`/new`, `/fork`, `/ls`, `/upload`, `/download`, `/model`, `/argon`, `/clear`, `/reset`, `/envs`, `/attach`, `/detach`), and automatic sandbox lifecycle management. |
+| Script | Mode | What It Does |
+| :--- | :--- | :--- |
+| [`run_deep_research.py`](run_deep_research.py) | **Automated Pipeline** | Provisions a fresh remote Linux sandbox, researches any topic via Google Search, builds an interactive `analytics.html` dashboard, refines it statefully in a second pass, downloads the HTML locally, and deletes the sandbox. |
+| [`interactive_cli.py`](interactive_cli.py) | **Interactive REPL** | Opens a live terminal chat session attached to a remote Linux sandbox. Supports multi-turn coding/research, live SSE streaming, and direct file transfers (`/ls`, `/upload`, `/download`, `/fork`, `/attach`, `/detach`). |
+| [`schedule_trigger.py`](schedule_trigger.py) | **Cloud Cron Job** | Registers an unattended **cloud cron schedule** (`client.triggers`) on Google's servers so an agent wakes up automatically (e.g., every day at 9:00 AM) without your machine running. Every scheduled run reuses the **same persistent sandbox** so files accumulate over time. |
+
+---
 
 ## Prerequisites
 
@@ -31,9 +33,11 @@ export GEMINI_API_KEY="$(security find-generic-password -a "$USER" -s GEMINI_API
 uv sync --frozen
 ```
 
-## Usage
+---
 
-### 1. Deep Research & Analytics Dashboard Generator (`run_deep_research.py`)
+## 1. Deep Research & Analytics Dashboard (`run_deep_research.py`)
+
+Runs a multi-step research workflow in a remote sandbox and exports a self-contained `analytics.html` dashboard to your local machine.
 
 ```bash
 # Research any topic and generate analytics.html (powered by Gemini 4 Argon)
@@ -45,48 +49,64 @@ uv run python run_deep_research.py "Open-source Rust web frameworks" --argon \
   --open
 
 # Single-pass mode (skip the follow-up refinement turn)
-uv run python run_deep_research.py "Quantum error correction breakthroughs" --no-refine
-
-# Default run (researches sustainable fashion brands if no topic is provided)
-uv run python run_deep_research.py
+uv run python run_deep_research.py "Quantum error correction breakthroughs" --argon --no-refine
 ```
 
-### 2. Scheduled Cron Trigger (`schedule_trigger.py`)
+---
+
+## 2. Interactive Remote Agent CLI (`interactive_cli.py`)
+
+A local REPL for working interactively inside a remote Antigravity Linux sandbox.
 
 ```bash
-# Test full trigger creation, verification, and cleanup without requiring a pre-registered secret
-uv run python schedule_trigger.py --no-credential
-
-# Configure the scheduled trigger to use Gemini 4 Argon
-uv run python schedule_trigger.py --no-credential --argon
-
-# Run with the default 'github-production' stored credential
-uv run python schedule_trigger.py
-
-# Leave the trigger active on the schedule (default: 09:00 America/New_York)
-uv run python schedule_trigger.py --no-credential --keep
-```
-
-### 3. Interactive Remote Agent CLI (`interactive_cli.py`)
-
-```bash
-# Launch interactive session (provisions a remote Linux sandbox on your first prompt)
-uv run python interactive_cli.py
-
 # Launch interactive session powered by Gemini 4 Argon
 uv run python interactive_cli.py --argon
 
-# Attach to an existing remote sandbox ID
-uv run python interactive_cli.py --env-id <ENVIRONMENT_ID>
+# Attach to an existing remote sandbox ID (e.g. from a previous session or a cron trigger)
+uv run python interactive_cli.py --argon --env-id <ENVIRONMENT_ID>
+```
 
-# Built-in REPL Slash Commands:
-#   /new | /fork                Provision a fresh sandbox or clone the current one
-#   /ls [path]                  List files in the remote sandbox (auto-provisions if needed)
-#   /upload <local> [remote]    Upload a local file into the sandbox (auto-provisions if needed)
-#   /download <remote> [local]  Download a file from the sandbox to local disk
-#   /model <name> | /argon      Switch the underlying model on the fly
-#   /clear                      Clear conversation history while keeping sandbox files
-#   /reset                      Delete current sandbox and provision a fresh one
-#   /envs | /attach | /detach   List, attach to, or detach from remote sandboxes
-#   /status | /help | /quit     Inspect session status, help, or exit cleanly
+**Built-in REPL Slash Commands:**
+- `/new` | `/fork` — Provision a fresh sandbox immediately or clone the current sandbox's filesystem
+- `/ls [path]` — List files in the remote sandbox (auto-provisions a sandbox if needed)
+- `/upload <local> [remote]` — Upload a local file into the sandbox (auto-provisions if needed)
+- `/download <remote> [local]` — Download a file from the sandbox to your local machine
+- `/model <name>` | `/argon` — Switch the underlying Gemini model on the fly
+- `/clear` — Clear conversation history while keeping all files in the sandbox
+- `/reset` — Delete the current sandbox and provision a fresh one
+- `/envs` | `/attach <id>` | `/detach` — List active sandboxes, attach to one, or detach while leaving it alive
+- `/status` | `/help` | `/quit` — View session token usage, help, or exit cleanly
+
+---
+
+## 3. Cloud Cron Scheduler (`schedule_trigger.py`)
+
+### How Triggers Work
+Unlike `run_deep_research.py` and `interactive_cli.py` (which run interactively while your terminal is open), **`client.triggers`** registers a **persistent cloud cron job** on Google's infrastructure:
+
+1. **Unattended Execution**: Google's scheduler wakes the agent up on your cron expression (e.g., `"0 9 * * *"` in `America/New_York`).
+2. **Persistent Shared Sandbox**: Every time the trigger fires, it reuses the **same remote Linux sandbox** (`environment_id`), so reports, git clones, or state files saved on Day 1 are still on disk on Day 2.
+3. **Egress Proxy Credential Injection**: Because a trigger runs unattended, you can lock its network access to specific domains (e.g., `api.github.com`) and reference a stored credential name (`credential="github-production"`). Google's egress proxy injects the secret on the fly so raw tokens never enter the sandbox or prompt.
+4. **Safe Default Behavior**: Running `schedule_trigger.py` without `--keep` registers the cron trigger, verifies that Google's scheduler accepted it and computed `next_run_time`, and **immediately deletes it** so you don't accidentally leave a recurring job billing tokens every morning.
+
+### Commands
+
+```bash
+# 1. Safe test run: create a trigger, verify it is active, and immediately delete it
+uv run python schedule_trigger.py --no-credential --argon
+
+# 2. Create a custom daily trigger and KEEP it active in the cloud (--keep)
+uv run python schedule_trigger.py --no-credential --argon --keep \
+  --name "daily-hn-digest" \
+  --schedule "0 9 * * *" \
+  --time-zone "America/New_York" \
+  --prompt "Check top stories on news.ycombinator.com and save a markdown summary to /workspace/digests/"
+
+# 3. Fire a trigger immediately on demand without waiting for the cron time (--run-now)
+uv run python schedule_trigger.py --no-credential --argon --keep --run-now
+
+# 4. Inspect active triggers, view past runs (and their sandbox IDs), or delete a trigger
+uv run python schedule_trigger.py --list
+uv run python schedule_trigger.py --executions <TRIGGER_ID>
+uv run python schedule_trigger.py --delete <TRIGGER_ID>
 ```
