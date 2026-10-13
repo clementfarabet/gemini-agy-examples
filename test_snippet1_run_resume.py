@@ -142,6 +142,28 @@ print(f"Total pipeline time: {time.time()-t_start:.1f}s")
 print(f"Preserved Sandbox ID: {run.environment_id}")
 print("=" * 65 + "\n")
 
+# ---------------- Step 4: Export Artifact (before cleanup) -----------------
+log("📥", "Step 4: Downloading generated artifact (analysis.html) to local disk...")
+downloaded = False
+for candidate_path in ["workspace/analysis.html", "analysis.html"]:
+    try:
+        content = client.environments.files.download(
+            environment=run.environment_id,
+            path=candidate_path,
+        )
+        with open("analysis.html", "wb") as f:
+            f.write(content)
+        log("✓", f"Successfully saved local file: analysis.html ({len(content)} bytes)")
+        downloaded = True
+        break
+    except Exception:
+        continue
+
+if not downloaded:
+    log("ℹ", "Could not locate analysis.html via direct download.")
+
+checks["analysis.html exported locally"] = downloaded
+
 if not keep_env and run.environment_id:
     try:
         client.environments.delete(id=run.environment_id)
