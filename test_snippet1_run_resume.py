@@ -20,6 +20,7 @@ from typing import Any
 import warnings
 
 from google import genai
+from google.genai import errors
 
 # Suppress experimental API warnings from the SDK for cleaner CLI output
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
@@ -32,11 +33,12 @@ CANDIDATE_ARTIFACT_PATHS = ("workspace/analysis.html", "analysis.html")
 
 @dataclass(frozen=True)
 class InteractionResult:
-    """Holds the key identifiers and collected text from a streamed interaction."""
+    """Holds the key identifiers, final output text, and token usage from an interaction."""
 
     id: str | None
     environment_id: str | None
     output_text: str
+    total_tokens: int | None = None
 
 
 class Logger:
@@ -85,7 +87,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def format_step_event(step: Any, logger: Logger) -> None:
-    """Log human-readable progress for an agent step."""
+    """Log human-readable progress for an agent step.start event."""
     step_type = getattr(step, "type", "")
     args = getattr(step, "arguments", None)
 
@@ -113,7 +115,7 @@ def stream_interaction(
     previous_id: str | None = None,
     model: str | None = None,
 ) -> InteractionResult:
-    """Execute an Antigravity agent interaction with real-time event streaming."""
+    """Execute an Antigravity agent interaction with real-time SSE streaming."""
     kwargs: dict[str, Any] = {
         "agent": DEFAULT_AGENT,
         "input": prompt,
@@ -127,10 +129,9 @@ def stream_interaction(
 
     try:
         events = client.interactions.create(**kwargs)
-    except Exception as exc:
-        err_msg = str(exc)
-        if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
-            logger.log("❌", f"Quota exceeded: {exc}")
+    except errors.APIError as exc:
+        if exc.code == 429 or "RESOURCE_EXHAUSTED" in str(exc):
+            logger.log("❌", f"Quota exceeded ({exc.code}): {exc.message}")
             print(
                 "\nNote: Models like Gemini 4 Argon require a Google AI Studio / GCP "
                 "project with billing enabled.",
@@ -140,6 +141,7 @@ def stream_interaction(
 
     interaction_id: str | None = None
     env_id: str | None = environment if environment != "remote" else None
+    total_tokens: int | None = None
     collected_text: list[str] = []
 
     for event in events:
@@ -157,26 +159,48 @@ def stream_interaction(
 
         elif event_type == "step.delta":
             delta = getattr(event, "delta", None)
-            text = getattr(delta, "text", None)
-            if not text and hasattr(delta, "content"):
-                text = getattr(delta.content, "text", "")
-            if text:
-                sys.stdout.write(text)
-                sys.stdout.flush()
-                collected_text.append(text)
+            delta_type = getattr(delta, "type", "")
+
+            if delta_type == "text":
+                text = getattr(delta, "text", "")
+                if text:
+                    sys.stdout.write(text)
+                    sys.stdout.flush()
+                    collected_text.append(text)
+            elif delta_type == "thought_summary":
+                content = getattr(delta, "content", None)
+                thought_text = getattr(content, "text", "") if content else ""
+                if thought_text:
+                    logger.log("💡", f"Thought summary: {thought_text.strip()}")
+
+        elif event_type == "step.stop":
+            usage = getattr(event, "usage", None)
+            if usage and getattr(usage, "total_tokens", None):
+                total_tokens = usage.total_tokens
 
         elif event_type == "interaction.completed":
             interaction = getattr(event, "interaction", None)
             if interaction:
                 env_id = getattr(interaction, "environment_id", env_id)
                 interaction_id = getattr(interaction, "id", interaction_id)
+                usage = getattr(interaction, "usage", None)
+                if usage and getattr(usage, "total_tokens", None):
+                    total_tokens = usage.total_tokens
             print("\n" + "-" * 50)
-            logger.log("✓", f"Step finished! (Interaction: {interaction_id})\n")
+            token_info = f", tokens: {total_tokens:,}" if total_tokens else ""
+            logger.log("✓", f"Step finished! (Interaction: {interaction_id}{token_info})\n")
+
+        elif event_type == "error":
+            err = getattr(event, "error", None)
+            code = getattr(err, "code", "unknown")
+            msg = getattr(err, "message", str(err))
+            raise RuntimeError(f"Stream error [{code}]: {msg}")
 
     return InteractionResult(
         id=interaction_id,
         environment_id=env_id,
         output_text="".join(collected_text),
+        total_tokens=total_tokens,
     )
 
 
@@ -200,7 +224,7 @@ def download_artifact(
                 f"Saved local artifact: {output_path} ({len(content):,} bytes from {remote_path})",
             )
             return True
-        except Exception:
+        except errors.APIError:
             continue
 
     logger.log("ℹ", "Could not locate analysis.html in sandbox via direct download.")
@@ -223,8 +247,8 @@ def cleanup_environment(
     try:
         client.environments.delete(id=environment_id)
         logger.log("🧹", f"Sandbox {environment_id} deleted cleanly.")
-    except Exception as exc:
-        logger.log("ℹ", f"Sandbox retained ({exc!r}); auto-expires after 7 days.")
+    except errors.APIError as exc:
+        logger.log("ℹ", f"Sandbox retained ({exc.code}); auto-expires after 7 days.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -261,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         # ---------------- Step 2: Follow-up in Same Sandbox ----------------
+        # Passes both `environment` (sandbox state) and `previous_interaction_id` (conversation history)
         print("=" * 65)
         logger.log("▶", f"STEP 2/4: Reusing sandbox ({active_env_id}) for follow-up...")
         logger.log(" ", "Prompt: 'Add a pricing-tier filter to the dashboard'")
@@ -276,6 +301,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         # ---------------- Step 3: Verification & Persistence Probe ----------------
+        # Intentionally omits `previous_interaction_id` to start a fresh conversation turn
+        # while reusing `environment=active_env_id` to verify true filesystem persistence.
         print("=" * 65)
         logger.log("▶", f"STEP 3/4: Probing sandbox ({active_env_id}) to verify persistence...")
         print("=" * 65)

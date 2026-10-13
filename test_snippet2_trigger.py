@@ -23,6 +23,7 @@ from typing import Any
 import warnings
 
 from google import genai
+from google.genai import errors
 
 # Suppress experimental API warnings from the SDK for cleaner CLI output
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
@@ -143,8 +144,8 @@ def cleanup_trigger(
     try:
         client.triggers.delete(id=trigger_id)
         logger.log("✓", f"Trigger {trigger_id} deleted cleanly.")
-    except Exception as exc:
-        logger.log("⚠️", f"Failed to delete trigger {trigger_id}: {exc}")
+    except errors.APIError as exc:
+        logger.log("⚠️", f"Failed to delete trigger {trigger_id} ({exc.code}): {exc.message}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -203,9 +204,9 @@ def main(argv: list[str] | None = None) -> int:
 
         return 0 if all(checks.values()) else 1
 
-    except Exception as exc:
+    except errors.APIError as exc:
         err_str = str(exc)
-        logger.log("❌", f"Trigger creation failed: {exc}")
+        logger.log("❌", f"Trigger creation failed ({exc.code}): {exc.message}")
         if "github-production" in err_str.lower() or "credential" in err_str.lower():
             print(
                 "\nTip: The credential 'github-production' is not registered in your project.\n"
