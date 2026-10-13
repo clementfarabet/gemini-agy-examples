@@ -60,6 +60,7 @@ SLASH_COMMANDS = (
     "/reset",
     "/envs",
     "/attach",
+    "/detach",
     "/quit",
     "/exit",
 )
@@ -345,6 +346,7 @@ def print_help() -> None:
         "  /reset                            Delete current sandbox and provision a fresh one\n"
         "  /envs                             List active remote sandboxes in your project\n"
         "  /attach <environment_id>          Switch session to an existing remote sandbox ID\n"
+        "  /detach                           Detach from current sandbox (leaves it alive remotely)\n"
         "  /quit, /exit                      Exit CLI and clean up sandbox (unless --keep-env)\n"
     )
 
@@ -448,6 +450,20 @@ def handle_slash_command(
         session.environment_id = args[0]
         session.previous_interaction_id = None
         print(f"🔗 Attached to sandbox: {session.environment_id} (conversation context reset)")
+        return True
+
+    if cmd == "/detach":
+        if not session.environment_id:
+            print("ℹ Not currently attached to any sandbox.")
+            return True
+        detached_id = session.environment_id
+        session.created_env_ids.discard(detached_id)
+        session.environment_id = None
+        session.previous_interaction_id = None
+        print(
+            f"🔌 Detached from sandbox: {detached_id}\n"
+            f"   Sandbox kept alive remotely — reconnect anytime with `/attach {detached_id}`."
+        )
         return True
 
     if cmd == "/ls":

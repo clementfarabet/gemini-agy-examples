@@ -85,6 +85,6 @@ uv run python test_snippet3_interactive_cli.py --env-id <ENVIRONMENT_ID>
 #   /model <name> | /argon      Switch the underlying model on the fly
 #   /clear                      Clear conversation history while keeping sandbox files
 #   /reset                      Delete current sandbox and provision a fresh one
-#   /envs | /attach <id>        List or attach to existing remote sandboxes
+#   /envs | /attach | /detach   List, attach to, or detach from remote sandboxes
 #   /status | /help | /quit     Inspect session status, help, or exit cleanly
 ```
