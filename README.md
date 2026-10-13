@@ -1,6 +1,6 @@
 # gemini-agy-examples
 
-Examples and verification suites for **Google Gemini API Managed Agents** running the Google Antigravity agent harness (`antigravity-preview-09-2026`).
+Examples and tools for **Google Gemini API Managed Agents** running the Google Antigravity agent harness (`antigravity-preview-09-2026`).
 
 ![Managed Agent Diagram](managed_agent_diagram.svg)
 
@@ -8,7 +8,7 @@ Examples and verification suites for **Google Gemini API Managed Agents** runnin
 
 | Script | Description |
 | :--- | :--- |
-| [`run_and_resume.py`](run_and_resume.py) | Streams a live agent interaction in an isolated remote Linux sandbox (`environment="remote"`), resumes in the same sandbox via `environment_id`, verifies file persistence, and exports the generated `analysis.html` dashboard locally before deleting the sandbox. |
+| [`run_deep_research.py`](run_deep_research.py) | Generic Deep Research & Dashboard generator: provisions an isolated remote Linux sandbox, researches any topic via Google Search, builds an interactive `analytics.html` dashboard, refines it statefully in the same sandbox, and exports the final HTML locally. |
 | [`schedule_trigger.py`](schedule_trigger.py) | Creates an always-on cron trigger (`triggers.create`) with domain allowlisting and optional credential injection, verifies its active status via `triggers.get`, and cleans up automatically. |
 | [`interactive_cli.py`](interactive_cli.py) | Full interactive local REPL for chatting with a remote Antigravity agent in real time, with live SSE streaming, tab-completed slash commands (`/new`, `/fork`, `/ls`, `/upload`, `/download`, `/model`, `/argon`, `/clear`, `/reset`, `/envs`, `/attach`, `/detach`), and automatic sandbox lifecycle management. |
 
@@ -33,20 +33,22 @@ uv sync --frozen
 
 ## Usage
 
-### 1. Run & Resume in a Stateful Remote Sandbox (`run_and_resume.py`)
+### 1. Deep Research & Analytics Dashboard Generator (`run_deep_research.py`)
 
 ```bash
-# Default run (uses gemini-3.8-flash)
-uv run python run_and_resume.py
+# Research any topic and generate analytics.html (powered by Gemini 4 Argon)
+uv run python run_deep_research.py "Global solid-state battery landscape in 2026" --argon
 
-# Run with Gemini 4 Argon
-uv run python run_and_resume.py --argon
+# Pass custom follow-up refinement instructions in the same sandbox and open in browser
+uv run python run_deep_research.py "Open-source Rust web frameworks" --argon \
+  --refine "Add a benchmark comparison chart and an interactive use-case filter" \
+  --open
 
-# Specify any supported model and custom output path
-uv run python run_and_resume.py --model gemini-4-argon --output dashboard.html
+# Single-pass mode (skip the follow-up refinement turn)
+uv run python run_deep_research.py "Quantum error correction breakthroughs" --no-refine
 
-# Preserve the remote sandbox after completion instead of deleting it
-uv run python run_and_resume.py --keep-env
+# Default run (researches sustainable fashion brands if no topic is provided)
+uv run python run_deep_research.py
 ```
 
 ### 2. Scheduled Cron Trigger (`schedule_trigger.py`)

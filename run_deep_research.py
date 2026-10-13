@@ -1,12 +1,23 @@
-"""Example 1: Run an Antigravity agent in a remote sandbox and resume statefully.
+"""Generic Deep Research & Analytics Dashboard Generator using an Antigravity Managed Agent.
 
-Streams live thoughts, Google searches, shell executions, and model output
-directly to the terminal, exports the generated HTML artifact to local disk,
-and cleans up the remote sandbox.
+Provisions an isolated remote Linux sandbox, conducts multi-step web research on
+any topic, builds a self-contained interactive dashboard (`analytics.html`),
+iteratively refines it in the same stateful sandbox, and downloads the final
+HTML artifact to your local machine.
 
 Usage:
     export GEMINI_API_KEY="..."
-    uv run python run_and_resume.py [--argon | --model MODEL] [--keep-env] [--output PATH]
+
+    # Research any topic and export analytics.html (with Gemini 4 Argon)
+    uv run python run_deep_research.py "Global solid-state battery landscape in 2026" --argon
+
+    # Add custom follow-up refinement pass(es) in the same sandbox and open in browser
+    uv run python run_deep_research.py "Open-source Rust web frameworks" --argon \\
+        --refine "Add a benchmark comparison chart and an interactive use-case filter" \\
+        --open
+
+    # Single-pass mode (skip the follow-up refinement turn)
+    uv run python run_deep_research.py "Quantum error correction breakthroughs" --no-refine
 """
 
 from __future__ import annotations
@@ -18,6 +29,7 @@ import sys
 import time
 from typing import Any
 import warnings
+import webbrowser
 
 from google import genai
 from google.genai import errors
@@ -28,7 +40,16 @@ warnings.filterwarnings("ignore", message=".*usage is experimental.*")
 DEFAULT_AGENT = "antigravity-preview-09-2026"
 DEFAULT_MODEL_LABEL = "gemini-3.8-flash (agent default)"
 ARGON_MODEL = "gemini-4-argon"
-CANDIDATE_ARTIFACT_PATHS = ("workspace/analysis.html", "analysis.html")
+DEFAULT_TOPIC = "Top 5 sustainable fashion brands and their supply-chain metrics"
+DEFAULT_REFINEMENT = (
+    "Enhance the dashboard in /workspace/analytics.html by adding interactive "
+    "category/tier filters, sortable metric columns, and a key takeaways summary section."
+)
+REMOTE_ARTIFACT_NAME = "analytics.html"
+CANDIDATE_ARTIFACT_PATHS = (
+    f"workspace/{REMOTE_ARTIFACT_NAME}",
+    REMOTE_ARTIFACT_NAME,
+)
 
 
 @dataclass(frozen=True)
@@ -58,8 +79,35 @@ class Logger:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run the Antigravity agent in a remote Linux sandbox and resume statefully."
+        description=(
+            "Conduct deep research on any topic inside a remote Antigravity sandbox "
+            "and generate a local analytics.html dashboard."
+        )
     )
+    parser.add_argument(
+        "topic",
+        nargs="?",
+        default=DEFAULT_TOPIC,
+        help=f"Research topic to investigate (default: '{DEFAULT_TOPIC}').",
+    )
+
+    refine_group = parser.add_mutually_exclusive_group()
+    refine_group.add_argument(
+        "-f",
+        "--refine",
+        action="append",
+        default=None,
+        help=(
+            "Follow-up refinement instruction(s) executed in the same stateful sandbox "
+            "(can be passed multiple times). Defaults to an interactive filter & summary enhancement pass."
+        ),
+    )
+    refine_group.add_argument(
+        "--no-refine",
+        action="store_true",
+        help="Skip the follow-up refinement turn and export after the initial research pass.",
+    )
+
     model_group = parser.add_mutually_exclusive_group()
     model_group.add_argument(
         "--model",
@@ -72,18 +120,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=f"Shorthand to run with Gemini 4 Argon (--model {ARGON_MODEL}).",
     )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path(REMOTE_ARTIFACT_NAME),
+        help=f"Local file path to save the generated dashboard (default: {REMOTE_ARTIFACT_NAME}).",
+    )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Automatically open the exported HTML dashboard in your default web browser.",
+    )
     parser.add_argument(
         "--keep-env",
         action="store_true",
         help="Preserve the remote sandbox on completion instead of deleting it.",
     )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("analysis.html"),
-        help="Local file path where the generated dashboard artifact will be saved (default: analysis.html).",
-    )
     return parser.parse_args(argv)
+
+
+def build_initial_prompt(topic: str) -> str:
+    """Construct the initial research and dashboard generation prompt."""
+    return (
+        f"Research the following topic thoroughly using Google Search: {topic}\n\n"
+        "Synthesize your findings, quantitative metrics, comparisons, and sources, "
+        f"and build a polished, self-contained, interactive HTML/CSS/JS analytics dashboard "
+        f"saved to `/workspace/{REMOTE_ARTIFACT_NAME}`."
+    )
 
 
 def format_step_event(step: Any, logger: Logger) -> None:
@@ -214,24 +279,25 @@ def download_artifact(
     environment_id: str,
     output_path: Path,
 ) -> bool:
-    """Download the generated artifact from the remote sandbox to local disk."""
-    logger.log("📥", f"Step 4/4: Downloading generated artifact to {output_path}...")
+    """Download the generated dashboard artifact from the remote sandbox to local disk."""
+    logger.log("📥", f"Downloading generated dashboard to {output_path}...")
     for remote_path in CANDIDATE_ARTIFACT_PATHS:
         try:
             content = client.environments.files.download(
                 environment=environment_id,
                 path=remote_path,
             )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(content)
             logger.log(
                 "✓",
-                f"Saved local artifact: {output_path} ({len(content):,} bytes from {remote_path})",
+                f"Saved local dashboard: {output_path} ({len(content):,} bytes from {remote_path})",
             )
             return True
         except errors.APIError:
             continue
 
-    logger.log("ℹ", "Could not locate analysis.html in sandbox via direct download.")
+    logger.log("ℹ", f"Could not locate {REMOTE_ARTIFACT_NAME} in sandbox via direct download.")
     return False
 
 
@@ -256,92 +322,89 @@ def cleanup_environment(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the multi-step sandbox creation, resumption, probe, and export pipeline."""
+    """Run the deep research, iterative refinement, verification, and export pipeline."""
     args = parse_args(argv)
     model_name: str | None = ARGON_MODEL if args.argon else args.model
     model_display = model_name or DEFAULT_MODEL_LABEL
 
+    refinements: list[str] = []
+    if not args.no_refine:
+        refinements = args.refine if args.refine else [DEFAULT_REFINEMENT]
+
+    total_steps = 1 + len(refinements) + 1  # Initial + Refinements + Export
     logger = Logger()
     client = genai.Client()
     active_env_id: str | None = None
 
     try:
-        # ---------------- Step 1: Initial Run ----------------
+        # ---------------- Step 1: Initial Deep Research & Dashboard Build ----------------
         print("\n" + "=" * 65)
-        logger.log("▶", "STEP 1/4: Provisioning remote sandbox and running Antigravity agent...")
+        logger.log("▶", f"STEP 1/{total_steps}: Provisioning sandbox & researching topic...")
+        logger.log(" ", f"Topic:  {args.topic}")
         logger.log(" ", f"Model:  {model_display}")
-        logger.log(" ", "Prompt: 'Research top 5 sustainable fashion brands & build analysis.html'")
+        logger.log(" ", f"Output: {args.output}")
         print("=" * 65)
 
         run1 = stream_interaction(
             client,
             logger,
-            prompt=(
-                "Research the top 5 sustainable fashion brands "
-                "and build a dashboard in analysis.html"
-            ),
+            prompt=build_initial_prompt(args.topic),
             environment="remote",
             model=model_name,
         )
         active_env_id = run1.environment_id
+        last_interaction_id = run1.id
         if not active_env_id:
             logger.log("❌", "Failed to obtain an environment_id from Step 1.")
             return 1
 
-        # ---------------- Step 2: Follow-up in Same Sandbox ----------------
-        # Passes both `environment` (sandbox state) and `previous_interaction_id` (conversation history)
-        print("=" * 65)
-        logger.log("▶", f"STEP 2/4: Reusing sandbox ({active_env_id}) for follow-up...")
-        logger.log(" ", "Prompt: 'Add a pricing-tier filter to the dashboard'")
-        print("=" * 65)
+        # ---------------- Step 2+: Stateful Refinement(s) in Same Sandbox ----------------
+        last_run = run1
+        for idx, refine_prompt in enumerate(refinements, start=2):
+            print("=" * 65)
+            logger.log(
+                "▶",
+                f"STEP {idx}/{total_steps}: Reusing sandbox ({active_env_id}) for refinement...",
+            )
+            logger.log(" ", f"Prompt: '{refine_prompt}'")
+            print("=" * 65)
 
-        run2 = stream_interaction(
-            client,
-            logger,
-            prompt="Add a pricing-tier filter to the dashboard",
-            environment=active_env_id,
-            previous_id=run1.id,
-            model=model_name,
-        )
+            last_run = stream_interaction(
+                client,
+                logger,
+                prompt=refine_prompt,
+                environment=active_env_id,
+                previous_id=last_interaction_id,
+                model=model_name,
+            )
+            last_interaction_id = last_run.id
 
-        # ---------------- Step 3: Verification & Persistence Probe ----------------
-        # Intentionally omits `previous_interaction_id` to start a fresh conversation turn
-        # while reusing `environment=active_env_id` to verify true filesystem persistence.
+        # ---------------- Final Step: Export Artifact ----------------
         print("=" * 65)
-        logger.log("▶", f"STEP 3/4: Probing sandbox ({active_env_id}) to verify persistence...")
+        logger.log("▶", f"STEP {total_steps}/{total_steps}: Exporting dashboard from sandbox...")
         print("=" * 65)
-
-        probe = stream_interaction(
-            client,
-            logger,
-            prompt=(
-                "Run `ls -la /workspace` and `grep -ci 'tier' analysis.html` (search for "
-                "analysis.html if it is elsewhere). Reply with the raw command output only."
-            ),
-            environment=active_env_id,
-            model=model_name,
-        )
-
-        # ---------------- Step 4: Export Artifact ----------------
         downloaded = download_artifact(client, logger, active_env_id, args.output)
 
         checks = {
-            "run1.environment_id is set": bool(run1.environment_id),
-            "run2 reused the same sandbox": run2.environment_id == run1.environment_id,
-            "run1 produced output_text": bool(run1.output_text),
-            "run2 produced output_text": bool(run2.output_text),
-            "analysis.html preserved in sandbox": "analysis.html" in probe.output_text,
-            "analysis.html exported locally": downloaded,
+            "sandbox environment_id allocated": bool(run1.environment_id),
+            "initial research produced output": bool(run1.output_text),
+            "stateful sandbox reused across turns": last_run.environment_id == run1.environment_id,
+            f"dashboard exported to {args.output}": downloaded,
         }
 
         print("\n" + "=" * 65)
-        print("FINAL VERIFICATION RESULTS:")
+        print("DEEP RESEARCH PIPELINE SUMMARY:")
         for name, ok in checks.items():
             print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+        print(f"Topic:               {args.topic}")
         print(f"Model used:          {model_display}")
+        print(f"Local Dashboard:     {args.output.resolve()}")
         print(f"Total pipeline time: {logger.elapsed:.1f}s")
         print(f"Sandbox ID:          {active_env_id}")
         print("=" * 65 + "\n")
+
+        if downloaded and args.open:
+            webbrowser.open(args.output.resolve().as_uri())
 
         return 0 if all(checks.values()) else 1
 
