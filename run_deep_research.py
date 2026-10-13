@@ -139,6 +139,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Preserve the remote sandbox on completion instead of deleting it.",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Stream full raw agent text responses and multi-line thought summaries to stdout.",
+    )
     return parser.parse_args(argv)
 
 
@@ -158,26 +164,59 @@ def build_initial_prompt(topic: str) -> str:
     )
 
 
-def format_step_event(step: Any, logger: Logger) -> None:
+def summarize_one_line(text: str, max_len: int = 90) -> str:
+    """Collapse multi-line markdown text into a clean single-line summary."""
+    lines = [line.strip().strip("*#").strip() for line in text.strip().splitlines() if line.strip()]
+    if not lines:
+        return ""
+    combined = " — ".join(lines) if len(lines) > 1 else lines[0]
+    combined = " ".join(combined.split())
+    if len(combined) > max_len:
+        return combined[: max_len - 3].rstrip() + "..."
+    return combined
+
+
+def extract_tool_detail(args: Any) -> str:
+    """Extract a concise one-line detail from step.arguments if available."""
+    if not args:
+        return ""
+    keys = ("toolSummary", "TargetFile", "AbsolutePath", "path", "CommandLine", "command", "query", "Url")
+    if isinstance(args, dict):
+        for key in keys:
+            if args.get(key):
+                return summarize_one_line(str(args[key]), max_len=60)
+    else:
+        for key in keys:
+            val = getattr(args, key, None)
+            if val:
+                return summarize_one_line(str(val), max_len=60)
+    return ""
+
+
+def format_step_event(step: Any, logger: Logger, *, verbose: bool = False) -> None:
     """Log human-readable progress for an agent step.start event."""
     step_type = getattr(step, "type", "")
     args = getattr(step, "arguments", None)
 
     if step_type == "thought":
-        logger.log("💭", "Agent planning next action...")
+        logger.log("💭", "Planning next action...")
     elif step_type == "google_search_call":
         queries = getattr(args, "queries", "") if args else ""
-        logger.log("🔍", f"Google Search: {queries}")
+        logger.log("🔍", f"Google Search: {summarize_one_line(str(queries), max_len=80)}")
     elif step_type == "code_execution_call":
         cmd = getattr(args, "command", getattr(args, "code", "")) if args else ""
-        snippet = str(cmd).strip().replace("\n", " ")[:70]
-        if snippet:
-            logger.log("⚡", f"Shell / Code execution: {snippet}")
+        snippet = summarize_one_line(str(cmd), max_len=75)
+        logger.log("⚡", f"Code execution: {snippet}" if snippet else "Code execution")
     elif step_type == "function_call":
         fn_name = getattr(step, "name", "") or "tool"
-        logger.log("🔧", f"Tool call: {fn_name}")
+        detail = extract_tool_detail(args)
+        suffix = f" ({detail})" if detail else ""
+        logger.log("🔧", f"Tool call: {fn_name}{suffix}")
     elif step_type == "model_output":
-        logger.log("📝", "Agent response:\n" + "-" * 50)
+        if verbose:
+            logger.log("📝", "Agent response:\n" + "-" * 50)
+        else:
+            logger.log("📝", "Synthesizing response...")
     elif step_type and not step_type.endswith("_result"):
         logger.log("🔧", f"Step: {step_type}")
 
@@ -190,6 +229,7 @@ def stream_interaction(
     environment: str,
     previous_id: str | None = None,
     model: str | None = None,
+    verbose: bool = False,
 ) -> InteractionResult:
     """Execute an Antigravity agent interaction with real-time SSE streaming."""
     kwargs: dict[str, Any] = {
@@ -228,10 +268,10 @@ def stream_interaction(
             if interaction:
                 interaction_id = getattr(interaction, "id", interaction_id)
                 env_id = getattr(interaction, "environment_id", env_id)
-            logger.log("🚀", f"Sandbox allocated: {env_id or 'provisioning...'}")
+            logger.log("🚀", f"Sandbox ready: {env_id or 'provisioning...'}")
 
         elif event_type == "step.start":
-            format_step_event(getattr(event, "step", None), logger)
+            format_step_event(getattr(event, "step", None), logger, verbose=verbose)
 
         elif event_type == "step.delta":
             delta = getattr(event, "delta", None)
@@ -240,14 +280,18 @@ def stream_interaction(
             if delta_type == "text":
                 text = getattr(delta, "text", "")
                 if text:
-                    sys.stdout.write(text)
-                    sys.stdout.flush()
                     collected_text.append(text)
+                    if verbose:
+                        sys.stdout.write(text)
+                        sys.stdout.flush()
             elif delta_type == "thought_summary":
                 content = getattr(delta, "content", None)
                 thought_text = getattr(content, "text", "") if content else ""
                 if thought_text:
-                    logger.log("💡", f"Thought summary: {thought_text.strip()}")
+                    if verbose:
+                        logger.log("💡", f"Thought summary: {thought_text.strip()}")
+                    else:
+                        logger.log("💡", f"Thought: {summarize_one_line(thought_text)}")
 
         elif event_type == "step.stop":
             usage = getattr(event, "usage", None)
@@ -262,9 +306,10 @@ def stream_interaction(
                 usage = getattr(interaction, "usage", None)
                 if usage and getattr(usage, "total_tokens", None):
                     total_tokens = usage.total_tokens
-            print("\n" + "-" * 50)
+            if verbose:
+                print("\n" + "-" * 50)
             token_info = f", tokens: {total_tokens:,}" if total_tokens else ""
-            logger.log("✓", f"Step finished! (Interaction: {interaction_id}{token_info})\n")
+            logger.log("✓", f"Step finished (Interaction: {interaction_id}{token_info})")
 
         elif event_type == "error":
             err = getattr(event, "error", None)
@@ -345,12 +390,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         # ---------------- Step 1: Initial Deep Research & Slide Deck Build ----------------
-        print("\n" + "=" * 65)
-        logger.log("▶", f"STEP 1/{total_steps}: Provisioning sandbox & researching topic...")
-        logger.log(" ", f"Topic:  {args.topic}")
-        logger.log(" ", f"Model:  {model_display}")
-        logger.log(" ", f"Output: {args.output}")
-        print("=" * 65)
+        logger.log(
+            "▶",
+            f"STEP 1/{total_steps}: Researching '{args.topic}' (model: {model_display}, output: {args.output})",
+        )
 
         run1 = stream_interaction(
             client,
@@ -358,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
             prompt=build_initial_prompt(args.topic),
             environment="remote",
             model=model_name,
+            verbose=args.verbose,
         )
         active_env_id = run1.environment_id
         last_interaction_id = run1.id
@@ -368,13 +412,10 @@ def main(argv: list[str] | None = None) -> int:
         # ---------------- Step 2+: Stateful Refinement(s) in Same Sandbox ----------------
         last_run = run1
         for idx, refine_prompt in enumerate(refinements, start=2):
-            print("=" * 65)
             logger.log(
                 "▶",
-                f"STEP {idx}/{total_steps}: Reusing sandbox ({active_env_id}) for refinement...",
+                f"STEP {idx}/{total_steps}: Refining in sandbox {active_env_id} ({summarize_one_line(refine_prompt, max_len=65)})",
             )
-            logger.log(" ", f"Prompt: '{refine_prompt}'")
-            print("=" * 65)
 
             last_run = stream_interaction(
                 client,
@@ -383,13 +424,12 @@ def main(argv: list[str] | None = None) -> int:
                 environment=active_env_id,
                 previous_id=last_interaction_id,
                 model=model_name,
+                verbose=args.verbose,
             )
             last_interaction_id = last_run.id
 
         # ---------------- Final Step: Export Artifact ----------------
-        print("=" * 65)
         logger.log("▶", f"STEP {total_steps}/{total_steps}: Exporting slide deck report from sandbox...")
-        print("=" * 65)
         downloaded = download_artifact(client, logger, active_env_id, args.output)
 
         checks = {
@@ -399,16 +439,23 @@ def main(argv: list[str] | None = None) -> int:
             f"slide deck report exported to {args.output}": downloaded,
         }
 
-        print("\n" + "=" * 65)
-        print("DEEP RESEARCH PIPELINE SUMMARY:")
-        for name, ok in checks.items():
-            print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
-        print(f"Topic:               {args.topic}")
-        print(f"Model used:          {model_display}")
-        print(f"Local Report:        {args.output.resolve()}")
-        print(f"Total pipeline time: {logger.elapsed:.1f}s")
-        print(f"Sandbox ID:          {active_env_id}")
-        print("=" * 65 + "\n")
+        if args.verbose:
+            print("\n" + "=" * 65)
+            print("DEEP RESEARCH PIPELINE SUMMARY:")
+            for name, ok in checks.items():
+                print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+            print(f"Topic:               {args.topic}")
+            print(f"Model used:          {model_display}")
+            print(f"Local Report:        {args.output.resolve()}")
+            print(f"Total pipeline time: {logger.elapsed:.1f}s")
+            print(f"Sandbox ID:          {active_env_id}")
+            print("=" * 65 + "\n")
+        else:
+            status_icon = "🎉" if all(checks.values()) else "⚠️"
+            logger.log(
+                status_icon,
+                f"Pipeline complete — Report: {args.output.resolve()} (model: {model_display})",
+            )
 
         if downloaded and args.open:
             webbrowser.open(args.output.resolve().as_uri())

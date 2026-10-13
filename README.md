@@ -50,6 +50,9 @@ uv run python run_deep_research.py "Open-source Rust web frameworks" --argon \
 
 # Single-pass mode (skip the follow-up refinement turn)
 uv run python run_deep_research.py "Quantum error correction breakthroughs" --argon --no-refine
+
+# Stream full raw agent responses and multi-line thoughts (-v / --verbose)
+uv run python run_deep_research.py "AI inference chip landscape" --argon --verbose
 ```
 
 ---
