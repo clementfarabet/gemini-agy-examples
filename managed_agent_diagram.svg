@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" font-family="'Google Sans', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5f6368"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="800" y="72" text-anchor="middle" font-size="40" font-weight="600" fill="#202124">Gemini API · Managed Agents</text>
+  <text x="800" y="116" text-anchor="middle" font-size="24" fill="#5f6368">One API call → the Antigravity agent, running in its own sandbox</text>
+
+  <!-- Your app -->
+  <rect x="60" y="310" width="300" height="180" rx="18" fill="#e8f0fe" stroke="#1a73e8" stroke-width="2"/>
+  <text x="210" y="380" text-anchor="middle" font-size="28" font-weight="600" fill="#1a73e8">Your app</text>
+  <text x="210" y="420" text-anchor="middle" font-size="16" font-family="'Roboto Mono', Menlo, monospace" fill="#202124">interactions.create()</text>
+  <text x="210" y="450" text-anchor="middle" font-size="16" fill="#5f6368">Python · JS · Go · Java · REST</text>
+
+  <!-- Trigger -->
+  <rect x="60" y="560" width="300" height="130" rx="18" fill="#fef7e0" stroke="#f9ab00" stroke-width="2"/>
+  <text x="210" y="610" text-anchor="middle" font-size="26" font-weight="600" fill="#b06000">Trigger (always on)</text>
+  <text x="210" y="648" text-anchor="middle" font-size="18" font-family="'Roboto Mono', Menlo, monospace" fill="#202124">cron: 0 9 * * *</text>
+
+  <!-- Interactions API -->
+  <rect x="420" y="330" width="320" height="140" rx="18" fill="#f1f3f4" stroke="#5f6368" stroke-width="2"/>
+  <text x="580" y="388" text-anchor="middle" font-size="26" font-weight="600" fill="#202124">Interactions API</text>
+  <text x="580" y="426" text-anchor="middle" font-size="15" font-family="'Roboto Mono', Menlo, monospace" fill="#202124">antigravity-preview-09-2026</text>
+
+  <!-- Arrows app -> API -> sandbox -->
+  <line x1="360" y1="400" x2="412" y2="400" stroke="#5f6368" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="740" y1="400" x2="792" y2="400" stroke="#5f6368" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- Sandbox container -->
+  <rect x="800" y="190" width="500" height="540" rx="24" fill="#e6f4ea" stroke="#188038" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="1050" y="232" text-anchor="middle" font-size="24" font-weight="600" fill="#188038">Isolated Linux sandbox</text>
+
+  <!-- Harness -->
+  <rect x="830" y="258" width="440" height="240" rx="18" fill="#ffffff" stroke="#188038" stroke-width="2"/>
+  <text x="1050" y="302" text-anchor="middle" font-size="26" font-weight="600" fill="#202124">Antigravity agent harness</text>
+  <text x="1050" y="334" text-anchor="middle" font-size="18" fill="#5f6368">Gemini 3.8 Flash by default</text>
+  <!-- chips -->
+  <rect x="855" y="360" width="190" height="52" rx="26" fill="#e8f0fe"/>
+  <text x="950" y="393" text-anchor="middle" font-size="18" fill="#1a73e8">Plan &amp; reason</text>
+  <rect x="1055" y="360" width="190" height="52" rx="26" fill="#e8f0fe"/>
+  <text x="1150" y="393" text-anchor="middle" font-size="18" fill="#1a73e8">Write &amp; run code</text>
+  <rect x="855" y="425" width="190" height="52" rx="26" fill="#e8f0fe"/>
+  <text x="950" y="458" text-anchor="middle" font-size="18" fill="#1a73e8">Browse the web</text>
+  <rect x="1055" y="425" width="190" height="52" rx="26" fill="#e8f0fe"/>
+  <text x="1150" y="458" text-anchor="middle" font-size="18" fill="#1a73e8">Manage files</text>
+
+  <!-- Workspace -->
+  <rect x="830" y="525" width="440" height="175" rx="18" fill="#ffffff" stroke="#188038" stroke-width="2"/>
+  <text x="1050" y="572" text-anchor="middle" font-size="24" font-weight="600" font-family="'Roboto Mono', Menlo, monospace" fill="#202124">/workspace</text>
+  <text x="1050" y="610" text-anchor="middle" font-size="18" fill="#5f6368">Files &amp; packages persist between runs</text>
+  <text x="1050" y="645" text-anchor="middle" font-size="18" fill="#5f6368">Resume with</text>
+  <text x="1050" y="676" text-anchor="middle" font-size="17" font-family="'Roboto Mono', Menlo, monospace" fill="#202124">environment=environment_id</text>
+
+  <!-- Trigger -> sandbox -->
+  <line x1="360" y1="625" x2="792" y2="625" stroke="#f9ab00" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="576" y="610" text-anchor="middle" font-size="18" fill="#b06000">same sandbox, every run</text>
+
+  <!-- Output -->
+  <line x1="1300" y1="400" x2="1352" y2="400" stroke="#5f6368" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="1360" y="330" width="200" height="140" rx="18" fill="#fce8e6" stroke="#d93025" stroke-width="2"/>
+  <text x="1460" y="386" text-anchor="middle" font-size="26" font-weight="600" fill="#d93025">Results</text>
+  <text x="1460" y="420" text-anchor="middle" font-size="17" fill="#202124">output_text</text>
+  <text x="1460" y="446" text-anchor="middle" font-size="17" fill="#202124">files · reports</text>
+
+  <!-- Lifecycle strip -->
+  <text x="800" y="790" text-anchor="middle" font-size="20" font-weight="600" fill="#5f6368">SANDBOX LIFECYCLE</text>
+  <rect x="210" y="810" width="300" height="56" rx="28" fill="#e6f4ea"/>
+  <text x="360" y="845" text-anchor="middle" font-size="19" fill="#188038">Active: task running</text>
+  <line x1="515" y1="838" x2="575" y2="838" stroke="#5f6368" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="580" y="810" width="420" height="56" rx="28" fill="#f1f3f4"/>
+  <text x="790" y="845" text-anchor="middle" font-size="19" fill="#202124">Idle 15 min: snapshot &amp; stop</text>
+  <line x1="1005" y1="838" x2="1065" y2="838" stroke="#5f6368" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="1070" y="810" width="320" height="56" rx="28" fill="#fef7e0"/>
+  <text x="1230" y="845" text-anchor="middle" font-size="19" fill="#b06000">Resume by ID for 7 days</text>
+</svg>
