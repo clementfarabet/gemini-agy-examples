@@ -43,9 +43,12 @@ ARGON_MODEL = "gemini-4-argon"
 REMOTE_ARTIFACT_NAME = "report.html"
 DEFAULT_TOPIC = "Top 5 sustainable fashion brands and their supply-chain metrics"
 DEFAULT_REFINEMENT = (
-    f"Enhance the interactive slide deck in `/workspace/{REMOTE_ARTIFACT_NAME}` by adding "
-    "interactive in-slide filters/tabs, sortable comparison tables, expandable detail cards, "
-    "and a slide-grid overview toggle (`G` key or button) while keeping keyboard navigation smooth."
+    f"Refine `/workspace/{REMOTE_ARTIFACT_NAME}` to make both its interactivity and visual precision "
+    "exceptional: add interactive in-slide filters/tabs, sortable comparison tables, expandable detail rows, "
+    "and a slide-grid overview toggle (`G` key or button). Enforce a lean, minimalist, ultra-precise modern "
+    "design (Linear / Vercel / Swiss editorial style): strict monochrome palette with a single restrained "
+    "accent, crisp 1px hairline borders, tabular monospace metrics, generous whitespace, and zero neon "
+    "gradients, glowing blurs, drop shadows, or decorative emojis."
 )
 CANDIDATE_ARTIFACT_PATHS = (
     f"workspace/{REMOTE_ARTIFACT_NAME}",
@@ -153,14 +156,21 @@ def build_initial_prompt(topic: str) -> str:
     return (
         f"Research the following topic thoroughly using Google Search: {topic}\n\n"
         "Synthesize your findings, quantitative metrics, comparisons, and verified sources, "
-        "and build a polished, self-contained, interactive HTML/CSS/JS **slide deck website** "
+        "and build a self-contained, interactive HTML/CSS/JS **slide deck website** "
         f"saved to `/workspace/{REMOTE_ARTIFACT_NAME}`.\n\n"
-        "Structure it as a rich multi-slide presentation (e.g., Title & Executive Summary, "
-        "Key Trends & Market/Domain Overview, Quantitative Data & Visual Charts, "
-        "Comparative Matrix, Deep-Dive Case Studies, Strategic Takeaways & Sources) featuring:\n"
-        "- Smooth keyboard navigation (`ArrowLeft` / `ArrowRight`, `Space`), on-screen prev/next controls, "
-        "a progress bar, slide counter (`1 / N`), and a clickable table-of-contents / slide jumper.\n"
-        "- Clean, modern presentation typography, visual data cards/charts, and responsive widescreen slide layout."
+        "Design Aesthetic (Lean, Minimalist, High-Precision Modern):\n"
+        "- Follow a Swiss editorial / Linear / Vercel / Stripe design language.\n"
+        "- Use `Inter` for UI/editorial typography (tight tracking `-0.03em` on headings) and `JetBrains Mono` "
+        "(`font-variant-numeric: tabular-nums`) for all metrics, indices, tags, and table numbers.\n"
+        "- Strict high-contrast monochrome palette (`#09090b` / `#111113` surfaces, `#fafafa` primary text, "
+        "`#a1a1aa` secondary text, `#27272a` 1px solid hairline borders, plus clean light-mode support) "
+        "with at most ONE restrained technical accent color.\n"
+        "- Sharp architectural geometry (`border-radius: 4px` or `0px` hairline grid cells). "
+        "NO ambient blur blobs, NO neon gradients, NO heavy drop shadows, and NO decorative emojis.\n"
+        "- Structure as a multi-slide presentation (Title & Executive Summary, Architecture/Overview, "
+        "Quantitative Benchmarks, Comparative Matrix, Case Studies, Strategic Takeaways & Sources) with "
+        "keyboard navigation (`ArrowLeft` / `ArrowRight`, `Space`), minimal header/footer chrome, "
+        "1px progress bar, slide counter (`01 / N`), and a clickable slide index."
     )
 
 
