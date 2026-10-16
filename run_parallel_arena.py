@@ -59,75 +59,49 @@ ARGON_MODEL = "gemini-4-argon"
 DEFAULT_REPORT_PATH = Path("arena_report.html")
 DEFAULT_WINNER_PATH = Path("winning_solution.py")
 
-DEFAULT_CHALLENGE_TITLE = "Rolling 60s VWAP & Trade Anomaly Engine (50,000 Trades)"
+DEFAULT_CHALLENGE_TITLE = "Closest Store Locator (5,000 Customers × 2,000 Stores)"
 
-SEED_BASELINE_PY = '''"""Baseline reference implementation for the Rolling 60s VWAP & Trade Anomaly Engine."""
+SEED_BASELINE_PY = '''"""Baseline reference implementation: Closest Store Locator.
+
+Given (x, y) map coordinates for 5,000 customers and 2,000 stores,
+find the closest store ID and Euclidean distance for every customer.
+"""
 
 from __future__ import annotations
 
+import math
+
 
 def solve(
-    timestamps_ms: list[int],
-    symbol_ids: list[int],
-    prices: list[float],
-    volumes: list[float],
-    window_ms: int = 60_000,
-    top_k: int = 50,
-) -> tuple[list[tuple[int, int, float, float]], dict[int, float]]:
-    """Compute rolling window_ms VWAP per symbol and return top_k price-deviation anomalies.
+    customers: list[tuple[float, float]],
+    stores: list[tuple[float, float]],
+) -> list[tuple[int, float]]:
+    """For each customer (cx, cy), find the index and distance of the nearest store (sx, sy).
 
     Args:
-        timestamps_ms: Monotonically non-decreasing trade timestamps in milliseconds (len N).
-        symbol_ids: Integer symbol ID for each trade (len N).
-        prices: Trade execution price for each trade (len N).
-        volumes: Trade volume for each trade (len N).
-        window_ms: Rolling lookback window in milliseconds (inclusive: [t - window_ms, t]).
-        top_k: Number of highest relative price-deviation trades to return.
+        customers: List of (x, y) coordinates for N customers.
+        stores: List of (x, y) coordinates for M stores.
 
     Returns:
-        A tuple (anomalies, symbol_notional_totals):
-        - anomalies: list of `top_k` tuples `(trade_idx, symbol_id, round(vwap, 6), round(z_score, 6))`
-          sorted by unrounded `z_score = abs(price - vwap) / vwap` descending (tie-broken by `trade_idx` ascending).
-        - symbol_notional_totals: dict mapping `symbol_id -> round(sum(price * volume), 4)` across all trades.
+        List of N tuples `(nearest_store_id, round(distance, 6))`, where ties in distance
+        are broken by choosing the smaller `store_id`.
     """
-    n = len(timestamps_ms)
-    history_by_symbol: dict[int, list[tuple[int, float, float]]] = {}
-    symbol_notional_totals: dict[int, float] = {}
-    scored_trades: list[tuple[float, int, int, float]] = []
+    results: list[tuple[int, float]] = []
 
-    for i in range(n):
-        ts = timestamps_ms[i]
-        sym = symbol_ids[i]
-        px = prices[i]
-        vol = volumes[i]
-        notional = px * vol
+    for cx, cy in customers:
+        best_store_id = 0
+        best_dist = float("inf")
+        for store_id, (sx, sy) in enumerate(stores):
+            dist = math.hypot(cx - sx, cy - sy)
+            if dist < best_dist:
+                best_dist = dist
+                best_store_id = store_id
+        results.append((best_store_id, round(best_dist, 6)))
 
-        symbol_notional_totals[sym] = symbol_notional_totals.get(sym, 0.0) + notional
-        sym_hist = history_by_symbol.setdefault(sym, [])
-        sym_hist.append((ts, notional, vol))
-
-        cutoff = ts - window_ms
-        win_notional = 0.0
-        win_vol = 0.0
-        for h_ts, h_notional, h_vol in sym_hist:
-            if h_ts >= cutoff:
-                win_notional += h_notional
-                win_vol += h_vol
-
-        vwap = win_notional / win_vol if win_vol > 0.0 else px
-        z_score = abs(px - vwap) / vwap if vwap > 0.0 else 0.0
-        scored_trades.append((-z_score, i, sym, vwap))
-
-    scored_trades.sort()
-    anomalies = [
-        (idx, sym, round(vwap, 6), round(-neg_z, 6))
-        for neg_z, idx, sym, vwap in scored_trades[:top_k]
-    ]
-    rounded_totals = {sym: round(tot, 4) for sym, tot in symbol_notional_totals.items()}
-    return anomalies, rounded_totals
+    return results
 '''
 
-SEED_BENCHMARK_PY = '''"""Deterministic correctness & latency benchmark harness for the Parallel Sandbox Arena."""
+SEED_BENCHMARK_PY = '''"""Deterministic correctness & latency benchmark harness for Closest Store Locator."""
 
 from __future__ import annotations
 
@@ -142,73 +116,37 @@ import baseline
 import solution
 
 
-def generate_dataset(n: int = 50_000, num_symbols: int = 200, seed: int = 42):
+def generate_dataset(num_customers: int = 5_000, num_stores: int = 2_000, seed: int = 42):
     rng = random.Random(seed)
-    timestamps_ms: list[int] = []
-    symbol_ids: list[int] = []
-    prices: list[float] = []
-    volumes: list[float] = []
-
-    base_prices = {s: rng.uniform(20.0, 500.0) for s in range(num_symbols)}
-    cur_ts = 1_700_000_000_000
-
-    for i in range(n):
-        cur_ts += rng.randint(0, 45)
-        sym = rng.randrange(num_symbols)
-        # Occasional sharp price spike to create realistic anomalies
-        if rng.random() < 0.004:
-            mult = rng.choice([0.72, 0.80, 1.22, 1.35])
-        else:
-            mult = 1.0 + rng.gauss(0.0, 0.008)
-        px = round(max(1.0, base_prices[sym] * mult), 4)
-        base_prices[sym] = max(5.0, base_prices[sym] * (1.0 + rng.gauss(0.0, 0.0005)))
-        vol = round(rng.uniform(1.0, 250.0), 2)
-
-        timestamps_ms.append(cur_ts)
-        symbol_ids.append(sym)
-        prices.append(px)
-        volumes.append(vol)
-
-    return timestamps_ms, symbol_ids, prices, volumes
+    customers = [(rng.uniform(0.0, 1000.0), rng.uniform(0.0, 1000.0)) for _ in range(num_customers)]
+    stores = [(rng.uniform(0.0, 1000.0), rng.uniform(0.0, 1000.0)) for _ in range(num_stores)]
+    return customers, stores
 
 
 def verify_equivalence(ref_out, cand_out) -> tuple[bool, str]:
-    ref_anom, ref_tot = ref_out
-    cand_anom, cand_tot = cand_out
+    if len(ref_out) != len(cand_out):
+        return False, f"Length mismatch: expected {len(ref_out)}, got {len(cand_out)}"
 
-    if len(ref_anom) != len(cand_anom):
-        return False, f"Anomaly count mismatch: expected {len(ref_anom)}, got {len(cand_anom)}"
+    for idx, ((r_id, r_dist), (c_id, c_dist)) in enumerate(zip(ref_out, cand_out)):
+        if r_id != c_id:
+            return False, f"Customer {idx} store mismatch: expected store {r_id} (d={r_dist}), got store {c_id} (d={c_dist})"
+        if abs(r_dist - c_dist) > 1e-4:
+            return False, f"Customer {idx} distance drift: expected {r_dist}, got {c_dist}"
 
-    for rank, (r_item, c_item) in enumerate(zip(ref_anom, cand_anom)):
-        r_idx, r_sym, r_vwap, r_z = r_item
-        c_idx, c_sym, c_vwap, c_z = c_item
-        if r_idx != c_idx or r_sym != c_sym:
-            return False, f"Rank {rank} mismatch: expected trade ({r_idx}, sym={r_sym}), got ({c_idx}, sym={c_sym})"
-        if abs(r_vwap - c_vwap) > 1e-4 or abs(r_z - c_z) > 1e-4:
-            return False, f"Rank {rank} float drift: expected ({r_vwap}, {r_z}), got ({c_vwap}, {c_z})"
-
-    if set(ref_tot.keys()) != set(cand_tot.keys()):
-        return False, "Symbol keys mismatch in notional totals"
-
-    for sym, r_val in ref_tot.items():
-        c_val = cand_tot[sym]
-        if abs(r_val - c_val) > 1e-2:
-            return False, f"Notional total drift for symbol {sym}: expected {r_val}, got {c_val}"
-
-    return True, "100% exact match on top-50 anomalies and 200 symbol totals"
+    return True, f"100% exact match across all {len(ref_out):,} customers"
 
 
 def main() -> int:
-    data = generate_dataset()
+    customers, stores = generate_dataset()
 
-    # Measure baseline
+    # Measure brute-force baseline
     t0 = time.perf_counter()
-    ref_out = baseline.solve(*data)
+    ref_out = baseline.solve(customers, stores)
     baseline_ms = (time.perf_counter() - t0) * 1000.0
 
-    # Warmup & verify candidate solution
+    # Verify candidate solution
     try:
-        cand_out = solution.solve(*data)
+        cand_out = solution.solve(customers, stores)
     except Exception as exc:
         metrics = {
             "passed": False,
@@ -238,7 +176,7 @@ def main() -> int:
     timings_ms: list[float] = []
     for _ in range(5):
         t_start = time.perf_counter()
-        solution.solve(*data)
+        solution.solve(customers, stores)
         timings_ms.append((time.perf_counter() - t_start) * 1000.0)
 
     median_ms = statistics.median(timings_ms)
@@ -275,54 +213,53 @@ class StrategySpec:
 DEFAULT_STRATEGIES: tuple[StrategySpec, ...] = (
     StrategySpec(
         code="FORK-01",
-        name="Two-Pointer Sliding Window",
+        name="2D Spatial Grid Index",
         instructions=(
-            "Optimize `/workspace/solution.py` using a pure-Python monotonic two-pointer "
-            "sliding window per symbol (maintaining running window notional and volume accumulators "
-            "and advancing the left index as timestamps fall outside `ts - window_ms`), combined "
-            "with `heapq.nsmallest` / `heapq.nlargest` for top-K selection."
+            "Optimize `/workspace/solution.py` in pure Python by bucketing stores into a 2D spatial grid "
+            "(e.g., dividing the 1000x1000 map into grid cells) and searching expanding ring neighborhoods "
+            "around each customer cell so you only check nearby stores instead of all 2,000."
         ),
     ),
     StrategySpec(
         code="FORK-02",
-        name="NumPy Vectorized Prefix-Sums",
+        name="NumPy Matrix Broadcasting",
         instructions=(
-            "Optimize `/workspace/solution.py` using NumPy vectorization: group or sort by symbol, "
-            "use cumulative prefix sums (`np.cumsum`) and vectorized binary search (`np.searchsorted`) "
-            "or C-level array operations (`np.bincount`, `np.argpartition`) to eliminate Python loop overhead."
+            "Optimize `/workspace/solution.py` using NumPy vectorized matrix operations: compute pairwise "
+            "squared distances using `|C|^2 + |S|^2 - 2 * (C @ S.T)` (or chunked broadcasting) and `np.argmin` "
+            "with zero Python loops."
         ),
     ),
     StrategySpec(
         code="FORK-03",
-        name="Flat-Array & Deque Accumulator",
+        name="Sorted X-Axis Sweep (Bisect Pruning)",
         instructions=(
-            "Optimize `/workspace/solution.py` using pre-allocated flat symbol buckets (indexed `0..max_sym` "
-            "lists/arrays instead of dicts), incremental sliding window state pointers, local variable binding, "
-            "and partial selection so memory allocations and hash lookups are minimized."
+            "Optimize `/workspace/solution.py` in pure Python by sorting stores by X-coordinate, using "
+            "`bisect` to start at the store closest in X to each customer, and sweeping left/right while "
+            "breaking early as soon as `abs(cx - sx) >= best_dist`."
         ),
     ),
     StrategySpec(
         code="FORK-04",
-        name="Native C Shared Library (ctypes)",
+        name="KD-Tree Spatial Partitioning",
         instructions=(
-            "Optimize `/workspace/solution.py` by compiling a small inline C shared library (`gcc -O3 -shared -fPIC`) "
-            "loaded via `ctypes` (or CFFI) to execute the sliding window VWAP and z-score loop at native C speed."
+            "Optimize `/workspace/solution.py` by building a 2D KD-Tree (either via `scipy.spatial.cKDTree` "
+            "if available or a fast recursive median-split tree) for logarithmic nearest-neighbor queries."
         ),
     ),
     StrategySpec(
         code="FORK-05",
-        name="Multiprocessing Symbol Sharding",
+        name="Native C Shared Library (ctypes)",
         instructions=(
-            "Optimize `/workspace/solution.py` by partitioning symbols across worker processes or threads "
-            "(or combining chunked `array('d')` buffers with fast C-backed stdlib primitives like `bisect` and `itertools`)."
+            "Optimize `/workspace/solution.py` by compiling a small inline C shared library (`gcc -O3 -shared -fPIC`) "
+            "loaded via `ctypes` to compute nearest-neighbor distances at native C speed."
         ),
     ),
     StrategySpec(
         code="FORK-06",
-        name="Hybrid NumPy + Monotonic C-Loop",
+        name="Multiprocessing Parallel Sharding",
         instructions=(
-            "Optimize `/workspace/solution.py` using a hybrid approach: use NumPy (`np.bincount`, vectorized math) "
-            "for symbol totals and array conversion, combined with a cache-friendly contiguous buffer scan."
+            "Optimize `/workspace/solution.py` by combining spatial pruning with multi-core execution "
+            "across customer batches."
         ),
     ),
 )

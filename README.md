@@ -121,13 +121,13 @@ uv run python schedule_trigger.py --delete <TRIGGER_ID>
 
 Showcases **instant container filesystem branching** (`client.environments.create(from_environment=...)`) combined with concurrent multi-agent execution:
 
-1. **Seed Base Sandbox**: Creates a single base sandbox and seeds `/workspace/baseline.py` (a slow reference implementation) and `/workspace/benchmark.py` (a strict correctness + latency harness).
-2. **Instant Forking (`from_environment`)**: Clones the base sandbox's filesystem into **3 isolated child sandboxes** in one API call each.
-3. **Concurrent Agent Swarm**: Dispatches 3 agents in parallel (`FORK-01` Two-Pointer Sliding Window, `FORK-02` NumPy Vectorized Prefix-Sums, `FORK-03` Flat-Array Accumulator). Each agent writes `/workspace/solution.py` and runs `/workspace/benchmark.py` inside its container.
-4. **Judge & Export**: Downloads `/workspace/metrics.json` and `/workspace/solution.py` from all 3 sandboxes, saves the fastest verified code to `winning_solution.py`, renders a minimalist `arena_report.html` scorecard, and deletes all 4 sandboxes.
+1. **Seed Base Sandbox**: Creates a single base sandbox and seeds `/workspace/baseline.py` (a simple brute-force **Closest Store Locator** checking 5,000 customers against 2,000 stores) and `/workspace/benchmark.py` (a strict correctness + latency harness).
+2. **Instant Forking (`from_environment`)**: Clones the base sandbox's filesystem into **$N$ isolated child sandboxes** (default `3`, configurable via `-n` / `--forks`).
+3. **Concurrent Agent Swarm**: Dispatches $N$ agents in parallel (`FORK-01` 2D Spatial Grid Index, `FORK-02` NumPy Matrix Broadcasting, `FORK-03` Sorted X-Axis Sweep, etc.). Each agent writes `/workspace/solution.py` and runs `/workspace/benchmark.py` inside its container.
+4. **Judge & Export**: Downloads `/workspace/metrics.json` and `/workspace/solution.py` from all $N$ sandboxes, saves the fastest verified code to `winning_solution.py`, renders a minimalist `arena_report.html` scorecard, and deletes all $N+1$ sandboxes.
 
 ```bash
-# Run the default 3-way parallel optimization arena (50,000-trade rolling VWAP & anomaly engine)
+# Run the default 3-way parallel optimization arena (Closest Store Locator: 5,000 customers × 2,000 stores)
 uv run python run_parallel_arena.py --open
 
 # Scale up to 5 parallel forked sandboxes (-n / --forks)
@@ -135,7 +135,7 @@ uv run python run_parallel_arena.py --forks 5 --open
 
 # Define your own custom competing strategies (-s / --strategy)
 uv run python run_parallel_arena.py \
-  -s "Pure NumPy: Use np.cumsum and np.searchsorted" \
+  -s "2D Spatial Grid: Bucket stores into grid cells and search nearby rings" \
   -s "Inline C (ctypes): Compile a C shared library with gcc -O3 and call via ctypes" \
   --open
 
