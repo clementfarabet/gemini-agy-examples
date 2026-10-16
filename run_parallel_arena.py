@@ -301,7 +301,122 @@ DEFAULT_STRATEGIES: tuple[StrategySpec, ...] = (
             "and partial selection so memory allocations and hash lookups are minimized."
         ),
     ),
+    StrategySpec(
+        code="FORK-04",
+        name="Native C Shared Library (ctypes)",
+        instructions=(
+            "Optimize `/workspace/solution.py` by compiling a small inline C shared library (`gcc -O3 -shared -fPIC`) "
+            "loaded via `ctypes` (or CFFI) to execute the sliding window VWAP and z-score loop at native C speed."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-05",
+        name="Multiprocessing Symbol Sharding",
+        instructions=(
+            "Optimize `/workspace/solution.py` by partitioning symbols across worker processes or threads "
+            "(or combining chunked `array('d')` buffers with fast C-backed stdlib primitives like `bisect` and `itertools`)."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-06",
+        name="Hybrid NumPy + Monotonic C-Loop",
+        instructions=(
+            "Optimize `/workspace/solution.py` using a hybrid approach: use NumPy (`np.bincount`, vectorized math) "
+            "for symbol totals and array conversion, combined with a cache-friendly contiguous buffer scan."
+        ),
+    ),
 )
+
+GENERIC_STRATEGIES: tuple[StrategySpec, ...] = (
+    StrategySpec(
+        code="FORK-01",
+        name="Algorithmic & Data-Structure Redesign",
+        instructions=(
+            "Optimize `/workspace/solution.py` by improving asymptotic complexity, "
+            "using optimal data structures, indexing, or pruning redundant work."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-02",
+        name="Vectorized / Array-Oriented Pipeline",
+        instructions=(
+            "Optimize `/workspace/solution.py` using NumPy vectorization, contiguous arrays, "
+            "or C-backed stdlib primitives (`itertools`, `bisect`, `heapq`, `array`) to remove Python loop overhead."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-03",
+        name="Precomputation & Memory-Locality Optimization",
+        instructions=(
+            "Optimize `/workspace/solution.py` via aggressive precomputation, flat lookup tables, "
+            "branch elimination, and local variable binding."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-04",
+        name="Native C Extension via ctypes",
+        instructions=(
+            "Optimize `/workspace/solution.py` by compiling an inline C shared library (`gcc -O3 -shared -fPIC`) "
+            "and calling it from Python via `ctypes` for maximum single-core throughput."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-05",
+        name="Parallel Multi-Core Execution",
+        instructions=(
+            "Optimize `/workspace/solution.py` using multi-core parallelism (`concurrent.futures` / `multiprocessing`) "
+            "and zero-copy shared memory buffers."
+        ),
+    ),
+    StrategySpec(
+        code="FORK-06",
+        name="Bitwise / Low-Level Buffer Specialization",
+        instructions=(
+            "Optimize `/workspace/solution.py` using low-level `bytearray` / `memoryview` / `struct` operations "
+            "and aggressive loop unrolling."
+        ),
+    ),
+)
+
+
+def resolve_strategies(
+    base_pool: tuple[StrategySpec, ...],
+    num_forks: int,
+    user_strategies: list[str] | None,
+) -> list[StrategySpec]:
+    """Build the list of N competing strategies from user overrides or the built-in catalog."""
+    if user_strategies:
+        resolved: list[StrategySpec] = []
+        for idx, raw in enumerate(user_strategies, start=1):
+            code = f"FORK-{idx:02d}"
+            if ":" in raw:
+                name, instr = raw.split(":", 1)
+                name = name.strip()
+                instr = f"Optimize `/workspace/solution.py` using this strategy: {instr.strip()}"
+            else:
+                name = raw.strip()[:36]
+                instr = f"Optimize `/workspace/solution.py` using this strategy: {raw.strip()}"
+            resolved.append(StrategySpec(code=code, name=name, instructions=instr))
+        return resolved
+
+    n = max(1, num_forks)
+    selected: list[StrategySpec] = []
+    for idx in range(1, n + 1):
+        if idx <= len(base_pool):
+            spec = base_pool[idx - 1]
+            selected.append(StrategySpec(code=f"FORK-{idx:02d}", name=spec.name, instructions=spec.instructions))
+        else:
+            selected.append(
+                StrategySpec(
+                    code=f"FORK-{idx:02d}",
+                    name=f"Exploratory Hybrid Variant #{idx}",
+                    instructions=(
+                        f"Optimize `/workspace/solution.py` using an independent hybrid strategy (Variant #{idx}) "
+                        "combining algorithmic pruning, vectorization, or native C compilation (`ctypes`) to maximize speedup."
+                    ),
+                )
+            )
+    return selected
 
 
 @dataclass
@@ -358,6 +473,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Fork a base Antigravity sandbox into N isolated child sandboxes, race competing "
             "optimization strategies in parallel, and export the winning code + HTML scorecard."
         )
+    )
+    parser.add_argument(
+        "-n",
+        "--forks",
+        type=int,
+        default=3,
+        help="Number of parallel child sandboxes to fork and race concurrently (default: 3).",
+    )
+    parser.add_argument(
+        "-s",
+        "--strategy",
+        action="append",
+        default=None,
+        help=(
+            "Custom strategy specification in 'Name: Instructions' format (can be passed multiple times). "
+            "Overrides --forks with the number of custom strategies passed."
+        ),
     )
     parser.add_argument(
         "--task",
@@ -496,6 +628,8 @@ def seed_base_sandbox(
     logger: Logger,
     *,
     custom_task: str | None,
+    num_forks: int,
+    user_strategies: list[str] | None,
     model: str | None,
     verbose: bool,
 ) -> tuple[str, list[StrategySpec]]:
@@ -523,7 +657,7 @@ def seed_base_sandbox(
             "📦",
             f"Base sandbox {base_env_id} seeded and verified (/workspace/baseline.py & /workspace/benchmark.py)",
         )
-        return base_env_id, list(DEFAULT_STRATEGIES)
+        return base_env_id, resolve_strategies(DEFAULT_STRATEGIES, num_forks, user_strategies)
 
     # Custom task: use an agent turn in the base sandbox to generate baseline.py and benchmark.py
     logger.log("🧪", f"Generating custom baseline & benchmark harness for: '{custom_task}'")
@@ -551,33 +685,7 @@ def seed_base_sandbox(
     )
     if not base_env_id:
         raise RuntimeError("Failed to obtain base sandbox environment_id.")
-    custom_strategies = [
-        StrategySpec(
-            code="FORK-01",
-            name="Algorithmic & Data-Structure Redesign",
-            instructions=(
-                "Optimize `/workspace/solution.py` by improving asymptotic complexity, "
-                "using optimal data structures, indexing, or pruning redundant work."
-            ),
-        ),
-        StrategySpec(
-            code="FORK-02",
-            name="Vectorized / Array-Oriented Pipeline",
-            instructions=(
-                "Optimize `/workspace/solution.py` using NumPy vectorization, contiguous arrays, "
-                "or C-backed stdlib primitives (`itertools`, `bisect`, `heapq`, `array`) to remove Python loop overhead."
-            ),
-        ),
-        StrategySpec(
-            code="FORK-03",
-            name="Precomputation & Memory-Locality Optimization",
-            instructions=(
-                "Optimize `/workspace/solution.py` via aggressive precomputation, flat lookup tables, "
-                "branch elimination, and local variable binding."
-            ),
-        ),
-    ]
-    return base_env_id, custom_strategies
+    return base_env_id, resolve_strategies(GENERIC_STRATEGIES, num_forks, user_strategies)
 
 
 def download_sandbox_text(client: genai.Client, env_id: str, filename: str) -> str | None:
@@ -812,7 +920,7 @@ def build_arena_report_html(
     }}
     .grid-3 {{
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
       gap: 16px;
       margin-bottom: 28px;
     }}
@@ -1079,6 +1187,8 @@ def main(argv: list[str] | None = None) -> int:
             client,
             logger,
             custom_task=args.task,
+            num_forks=args.forks,
+            user_strategies=args.strategy,
             model=model_name,
             verbose=args.verbose,
         )

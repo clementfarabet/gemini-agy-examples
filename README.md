@@ -130,11 +130,17 @@ Showcases **instant container filesystem branching** (`client.environments.creat
 # Run the default 3-way parallel optimization arena (50,000-trade rolling VWAP & anomaly engine)
 uv run python run_parallel_arena.py --open
 
-# Run with Gemini 4 Argon
-uv run python run_parallel_arena.py --argon --open
+# Scale up to 5 parallel forked sandboxes (-n / --forks)
+uv run python run_parallel_arena.py --forks 5 --open
 
-# Run a custom optimization challenge across 3 forked sandboxes
+# Define your own custom competing strategies (-s / --strategy)
 uv run python run_parallel_arena.py \
+  -s "Pure NumPy: Use np.cumsum and np.searchsorted" \
+  -s "Inline C (ctypes): Compile a C shared library with gcc -O3 and call via ctypes" \
+  --open
+
+# Run a custom optimization challenge across 4 forked sandboxes
+uv run python run_parallel_arena.py --forks 4 \
   --task "Fastest Levenshtein edit-distance batch matcher across 15,000 strings" \
   --open
 ```
