@@ -4,13 +4,14 @@ Examples and CLI tools for **Google Gemini API Managed Agents** running the Goog
 
 ![Managed Agent Diagram](managed_agent_diagram.svg)
 
-## Overview: Three Ways to Run an Antigravity Agent
+## Overview: Four Ways to Run an Antigravity Agent
 
 | Script | Mode | What It Does |
 | :--- | :--- | :--- |
 | [`run_deep_research.py`](run_deep_research.py) | **Automated Pipeline** | Provisions a fresh remote Linux sandbox, researches any topic via Google Search, builds an interactive `report.html` slide deck website, refines it statefully in a second pass, downloads the HTML locally, and deletes the sandbox. |
 | [`interactive_cli.py`](interactive_cli.py) | **Interactive REPL** | Opens a live terminal chat session attached to a remote Linux sandbox. Supports multi-turn coding/research, live SSE streaming, and direct file transfers (`/ls`, `/upload`, `/download`, `/fork`, `/attach`, `/detach`). |
 | [`schedule_trigger.py`](schedule_trigger.py) | **Cloud Cron Job** | Registers an unattended **cloud cron schedule** (`client.triggers`) on Google's servers so an agent wakes up automatically (e.g., every day at 9:00 AM) without your machine running. Every scheduled run reuses the **same persistent sandbox** so files accumulate over time. |
+| [`run_parallel_arena.py`](run_parallel_arena.py) | **Parallel Sandbox Arena** | Seeds a base sandbox with a baseline algorithm & benchmark harness, **forks** its exact filesystem into $N$ isolated child sandboxes (`from_environment`), races $N$ competing optimization strategies concurrently, and exports the fastest verified code (`winning_solution.py`) + a minimalist `arena_report.html` scorecard. |
 
 ---
 
@@ -112,4 +113,28 @@ uv run python schedule_trigger.py --no-credential --argon --keep --run-now
 uv run python schedule_trigger.py --list
 uv run python schedule_trigger.py --executions <TRIGGER_ID>
 uv run python schedule_trigger.py --delete <TRIGGER_ID>
+```
+
+---
+
+## 4. Parallel Sandbox Forking: Best-of-$N$ Arena (`run_parallel_arena.py`)
+
+Showcases **instant container filesystem branching** (`client.environments.create(from_environment=...)`) combined with concurrent multi-agent execution:
+
+1. **Seed Base Sandbox**: Creates a single base sandbox and seeds `/workspace/baseline.py` (a slow reference implementation) and `/workspace/benchmark.py` (a strict correctness + latency harness).
+2. **Instant Forking (`from_environment`)**: Clones the base sandbox's filesystem into **3 isolated child sandboxes** in one API call each.
+3. **Concurrent Agent Swarm**: Dispatches 3 agents in parallel (`FORK-01` Two-Pointer Sliding Window, `FORK-02` NumPy Vectorized Prefix-Sums, `FORK-03` Flat-Array Accumulator). Each agent writes `/workspace/solution.py` and runs `/workspace/benchmark.py` inside its container.
+4. **Judge & Export**: Downloads `/workspace/metrics.json` and `/workspace/solution.py` from all 3 sandboxes, saves the fastest verified code to `winning_solution.py`, renders a minimalist `arena_report.html` scorecard, and deletes all 4 sandboxes.
+
+```bash
+# Run the default 3-way parallel optimization arena (50,000-trade rolling VWAP & anomaly engine)
+uv run python run_parallel_arena.py --open
+
+# Run with Gemini 4 Argon
+uv run python run_parallel_arena.py --argon --open
+
+# Run a custom optimization challenge across 3 forked sandboxes
+uv run python run_parallel_arena.py \
+  --task "Fastest Levenshtein edit-distance batch matcher across 15,000 strings" \
+  --open
 ```
