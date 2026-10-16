@@ -417,12 +417,12 @@ def stream_agent_turn(
     logger: Logger,
     *,
     prompt: str,
-    environment_id: str,
+    environment_id: str = "remote",
     model: str | None = None,
     prefix: str = "",
     verbose: bool = False,
-) -> tuple[str | None, int]:
-    """Run an agent turn inside a specific sandbox and log single-line steps."""
+) -> tuple[str | None, str | None, int]:
+    """Run an agent turn inside a sandbox and return (interaction_id, environment_id, total_tokens)."""
     kwargs: dict[str, Any] = {
         "agent": DEFAULT_AGENT,
         "input": prompt,
@@ -434,6 +434,7 @@ def stream_agent_turn(
 
     events = client.interactions.create(**kwargs)
     interaction_id: str | None = None
+    resolved_env_id: str | None = None if environment_id == "remote" else environment_id
     total_tokens = 0
 
     for event in events:
@@ -443,6 +444,7 @@ def stream_agent_turn(
             interaction = getattr(event, "interaction", None)
             if interaction:
                 interaction_id = getattr(interaction, "id", interaction_id)
+                resolved_env_id = getattr(interaction, "environment_id", resolved_env_id)
 
         elif event_type == "step.start":
             step = getattr(event, "step", None)
@@ -476,6 +478,7 @@ def stream_agent_turn(
             interaction = getattr(event, "interaction", None)
             if interaction:
                 interaction_id = getattr(interaction, "id", interaction_id)
+                resolved_env_id = getattr(interaction, "environment_id", resolved_env_id)
                 usage = getattr(interaction, "usage", None)
                 if usage and getattr(usage, "total_tokens", None):
                     total_tokens = int(usage.total_tokens)
@@ -485,7 +488,7 @@ def stream_agent_turn(
             err = getattr(event, "error", None)
             raise RuntimeError(f"Stream error: {getattr(err, 'message', err)}")
 
-    return interaction_id, total_tokens
+    return interaction_id, resolved_env_id, total_tokens
 
 
 def seed_base_sandbox(
@@ -496,30 +499,29 @@ def seed_base_sandbox(
     model: str | None,
     verbose: bool,
 ) -> tuple[str, list[StrategySpec]]:
-    """Create the base sandbox and populate `/workspace/baseline.py` and `/workspace/benchmark.py`."""
-    base_env = client.environments.create()
-    base_env_id = getattr(base_env, "id", None)
-    if not base_env_id:
-        raise RuntimeError("Failed to provision base sandbox environment.")
-    logger.log("🚀", f"Provisioned base sandbox: {base_env_id}")
-
+    """Provision the base sandbox and populate `/workspace/baseline.py` and `/workspace/benchmark.py`."""
     if not custom_task:
-        # Fast direct file seed (~1s)
-        for fname, content in (
-            ("workspace/baseline.py", SEED_BASELINE_PY),
-            ("workspace/solution.py", SEED_BASELINE_PY),
-            ("workspace/benchmark.py", SEED_BENCHMARK_PY),
-        ):
-            client.environments.files.upload(
-                environment=base_env_id,
-                path=fname,
-                file=content.encode("utf-8"),
-                mime_type="text/x-python",
-                overwrite=True,
-            )
+        setup_prompt = (
+            "Write the following two files verbatim to `/workspace/baseline.py` and `/workspace/benchmark.py`, "
+            "copy `/workspace/baseline.py` to `/workspace/solution.py`, and run `python3 /workspace/benchmark.py` "
+            "once to verify `/workspace/metrics.json` is generated. Do not make any other changes.\n\n"
+            f"### File 1: `/workspace/baseline.py`\n```python\n{SEED_BASELINE_PY.strip()}\n```\n\n"
+            f"### File 2: `/workspace/benchmark.py`\n```python\n{SEED_BENCHMARK_PY.strip()}\n```"
+        )
+        _, base_env_id, _ = stream_agent_turn(
+            client,
+            logger,
+            prompt=setup_prompt,
+            environment_id="remote",
+            model=model,
+            prefix="BASE",
+            verbose=verbose,
+        )
+        if not base_env_id:
+            raise RuntimeError("Failed to obtain base sandbox environment_id.")
         logger.log(
             "📦",
-            "Seeded /workspace/baseline.py & /workspace/benchmark.py in base sandbox",
+            f"Base sandbox {base_env_id} seeded and verified (/workspace/baseline.py & /workspace/benchmark.py)",
         )
         return base_env_id, list(DEFAULT_STRATEGIES)
 
@@ -538,15 +540,17 @@ def seed_base_sandbox(
         "`min_ms` (float), `speedup_x` (float).\n"
         "4. Run `python3 /workspace/benchmark.py` to confirm `/workspace/metrics.json` is created."
     )
-    stream_agent_turn(
+    _, base_env_id, _ = stream_agent_turn(
         client,
         logger,
         prompt=setup_prompt,
-        environment_id=base_env_id,
+        environment_id="remote",
         model=model,
         prefix="BASE",
         verbose=verbose,
     )
+    if not base_env_id:
+        raise RuntimeError("Failed to obtain base sandbox environment_id.")
     custom_strategies = [
         StrategySpec(
             code="FORK-01",
@@ -616,7 +620,7 @@ def run_contender(
         "shows `passed: true` with maximum speedup."
     )
 
-    interaction_id, tokens = stream_agent_turn(
+    interaction_id, _, tokens = stream_agent_turn(
         client,
         logger,
         prompt=prompt,
