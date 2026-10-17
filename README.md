@@ -4,7 +4,7 @@ Examples and CLI tools for **Google Gemini API Managed Agents** running the Goog
 
 ![Managed Agent Diagram](managed_agent_diagram.svg)
 
-## Overview: Four Ways to Run an Antigravity Agent
+## Overview: Five Ways to Run an Antigravity Agent
 
 | Script | Mode | What It Does |
 | :--- | :--- | :--- |
@@ -12,6 +12,7 @@ Examples and CLI tools for **Google Gemini API Managed Agents** running the Goog
 | [`interactive_cli.py`](interactive_cli.py) | **Interactive REPL** | Opens a live terminal chat session attached to a remote Linux sandbox. Supports multi-turn coding/research, live SSE streaming, and direct file transfers (`/ls`, `/upload`, `/download`, `/fork`, `/attach`, `/detach`). |
 | [`schedule_trigger.py`](schedule_trigger.py) | **Cloud Cron Job** | Registers an unattended **cloud cron schedule** (`client.triggers`) on Google's servers so an agent wakes up automatically (e.g., every day at 9:00 AM) without your machine running. Every scheduled run reuses the **same persistent sandbox** so files accumulate over time. |
 | [`run_parallel_arena.py`](run_parallel_arena.py) | **Parallel Sandbox Arena** | Seeds a base sandbox with a baseline algorithm & benchmark harness, **forks** its exact filesystem into $N$ isolated child sandboxes (`from_environment`), races $N$ competing optimization strategies concurrently, and exports the fastest verified code (`winning_solution.py`) + a minimalist `arena_report.html` scorecard. |
+| [`web_studio.py`](web_studio.py) | **Local Web UI Studio** | Launches a zero-dependency local web server (`http://127.0.0.1:8080`) with a **Split-Screen Agent Chat**, **Live `/workspace` File Explorer**, **1-Click Sandbox Forking**, and a **Live App Preview Canvas** that renders HTML/SVG apps directly out of the remote cloud container. |
 
 ---
 
@@ -144,3 +145,25 @@ uv run python run_parallel_arena.py --forks 4 \
   --task "Fastest Levenshtein edit-distance batch matcher across 15,000 strings" \
   --open
 ```
+
+---
+
+## 5. Antigravity Web Studio (`web_studio.py`)
+
+A zero-dependency local web application (`http://127.0.0.1:8080`) that pairs a **Split-Screen Agent Chat** with a **Live `/workspace` File Explorer** and **Live App Preview Canvas** directly backed by the remote Linux cloud sandbox:
+
+- **Left Pane — Live Agent Stream**: Multi-turn chat with real-time SSE progress pills (`BashToolCall`, `WriteToolCall`, `WebSearchToolCall`, collapsible reasoning thoughts) and starter prompt templates.
+- **Right Pane — Live Preview Canvas & Code Inspector**: Automatically detects `.html` / `.svg` files created in `/workspace` (especially `/workspace/index.html`) and renders them live inside an interactive iframe via a built-in sandbox file proxy (`/sandbox/<env_id>/<path>`), alongside a raw source code viewer and local file download button.
+- **Top Bar — 1-Click Sandbox Forking & Switching**: Click **Fork Sandbox** to clone the current container's `/workspace` filesystem (`from_environment`) and test a radical UI or code direction on a branch without losing the original state.
+
+```bash
+# Launch Web Studio on http://127.0.0.1:8080 and open in your browser
+uv run python web_studio.py
+
+# Launch on a custom port or attach to an existing sandbox ID
+uv run python web_studio.py --port 8090 --env-id <ENVIRONMENT_ID>
+
+# Keep created sandboxes alive in the cloud when stopping the server
+uv run python web_studio.py --keep-env
+```
+
