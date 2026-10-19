@@ -38,6 +38,14 @@ import warnings
 
 from google import genai
 from google.genai import errors
+try:
+    from google.genai._gaos.lib import compat_errors
+    API_ERRORS: tuple[type[Exception], ...] = (
+        errors.APIError,
+        compat_errors.GeminiNextGenAPIClientError,
+    )
+except ImportError:
+    API_ERRORS = (errors.APIError,)
 
 # Suppress experimental API warnings from the SDK for cleaner CLI output
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
@@ -206,7 +214,7 @@ def run_agent_turn(
 
     try:
         events = client.interactions.create(**kwargs)
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         logger.log("❌", f"API Error ({exc.code}): {exc.message}")
         if exc.code == 429 or "RESOURCE_EXHAUSTED" in str(exc):
             print(
@@ -324,7 +332,7 @@ def ensure_sandbox(
             action = f"Forked from {from_environment} ->" if from_environment else "Provisioned new sandbox:"
             print(f"🚀 {action} {env_id}")
         return env_id
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         print(f"❌ Failed to provision sandbox ({exc.code}): {exc.message}")
         return None
 
@@ -418,7 +426,7 @@ def handle_slash_command(
                 client.environments.delete(id=session.environment_id)
                 print(f"🧹 Deleted sandbox: {session.environment_id}")
                 session.created_env_ids.discard(session.environment_id)
-            except errors.APIError as exc:
+            except API_ERRORS as exc:
                 print(f"⚠️ Could not delete sandbox ({exc.code}): {exc.message}")
         session.environment_id = None
         session.previous_interaction_id = None
@@ -439,7 +447,7 @@ def handle_slash_command(
                     marker = " (current)" if eid == session.environment_id else ""
                     print(f"  • {eid}  [{status}]{marker}")
                 print()
-        except errors.APIError as exc:
+        except API_ERRORS as exc:
             print(f"❌ Failed to list environments ({exc.code}): {exc.message}")
         return True
 
@@ -489,7 +497,7 @@ def handle_slash_command(
                     icon = "📁" if str(ftype).upper() == "DIRECTORY" else "📄"
                     print(f"  {icon} {fpath}{size_str}")
                 print()
-        except errors.APIError as exc:
+        except API_ERRORS as exc:
             print(f"❌ Could not list '{remote_path}' ({exc.code}): {exc.message}")
         return True
 
@@ -518,7 +526,7 @@ def handle_slash_command(
                 local_dest.write_bytes(data)
                 print(f"📥 Downloaded {candidate} -> {local_dest} ({len(data):,} bytes)")
                 return True
-            except errors.APIError:
+            except API_ERRORS:
                 continue
 
         print(f"❌ File '{remote_req}' not found in sandbox {session.environment_id}.")
@@ -552,7 +560,7 @@ def handle_slash_command(
                 else ""
             )
             print(f"📤 Uploaded {local_src} -> {remote_dest}{size_info}")
-        except errors.APIError as exc:
+        except API_ERRORS as exc:
             print(f"❌ Upload failed ({exc.code}): {exc.message}")
         return True
 
@@ -573,7 +581,7 @@ def cleanup_session_environments(client: genai.Client, session: SessionState) ->
         try:
             client.environments.delete(id=env_id)
             print(f"🧹 Deleted sandbox: {env_id}")
-        except errors.APIError as exc:
+        except API_ERRORS as exc:
             print(f"ℹ Sandbox {env_id} retained ({exc.code}); auto-expires after 7 days.")
 
 

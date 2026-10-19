@@ -33,6 +33,14 @@ import webbrowser
 
 from google import genai
 from google.genai import errors
+try:
+    from google.genai._gaos.lib import compat_errors
+    API_ERRORS: tuple[type[Exception], ...] = (
+        errors.APIError,
+        compat_errors.GeminiNextGenAPIClientError,
+    )
+except ImportError:
+    API_ERRORS = (errors.APIError,)
 
 # Suppress experimental API warnings from the SDK for cleaner CLI output
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
@@ -255,7 +263,7 @@ def stream_interaction(
 
     try:
         events = client.interactions.create(**kwargs)
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         if exc.code == 429 or "RESOURCE_EXHAUSTED" in str(exc):
             logger.log("❌", f"Quota exceeded ({exc.code}): {exc.message}")
             print(
@@ -356,7 +364,7 @@ def download_artifact(
                 f"Saved local slide deck report: {output_path} ({len(content):,} bytes from {remote_path})",
             )
             return True
-        except errors.APIError:
+        except API_ERRORS:
             continue
 
     logger.log("ℹ", f"Could not locate {REMOTE_ARTIFACT_NAME} in sandbox via direct download.")
@@ -379,7 +387,7 @@ def cleanup_environment(
     try:
         client.environments.delete(id=environment_id)
         logger.log("🧹", f"Sandbox {environment_id} deleted cleanly.")
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         logger.log("ℹ", f"Sandbox retained ({exc.code}); auto-expires after 7 days.")
 
 

@@ -42,6 +42,14 @@ import webbrowser
 
 from google import genai
 from google.genai import errors
+try:
+    from google.genai._gaos.lib import compat_errors
+    API_ERRORS: tuple[type[Exception], ...] = (
+        errors.APIError,
+        compat_errors.GeminiNextGenAPIClientError,
+    )
+except ImportError:
+    API_ERRORS = (errors.APIError,)
 
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
 
@@ -106,7 +114,7 @@ class StudioState:
             try:
                 self.client.environments.delete(id=eid)
                 print(f"🧹 Deleted sandbox: {eid}")
-            except errors.APIError:
+            except API_ERRORS:
                 pass
 
 
@@ -189,7 +197,7 @@ def list_sandbox_files(client: genai.Client, env_id: str) -> list[dict[str, Any]
             )
         items.sort(key=lambda x: (not x["is_previewable"], x["name"]))
         return items
-    except errors.APIError:
+    except Exception:
         return []
 
 
@@ -212,7 +220,7 @@ def download_sandbox_bytes(client: genai.Client, env_id: str, remote_path: str) 
             elif mime.startswith("text/") or mime in ("application/javascript", "application/json"):
                 mime = f"{mime}; charset=utf-8"
             return data, mime
-        except errors.APIError:
+        except Exception:
             continue
     return None
 
@@ -836,8 +844,9 @@ STUDIO_HTML = """<!DOCTYPE html>
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let streamDone = false;
 
-        while (true) {
+        while (!streamDone) {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -870,18 +879,28 @@ STUDIO_HTML = """<!DOCTYPE html>
               bodyBox.textContent += payload.text;
               container.scrollTop = container.scrollHeight;
             } else if (payload.type === 'done') {
+              streamDone = true;
+              if (payload.env_id) {
+                currentEnvId = payload.env_id;
+              }
               if (payload.tokens) {
                 cumulativeTokens += payload.tokens;
                 document.getElementById('token-counter').textContent = `${cumulativeTokens.toLocaleString()} TOKENS`;
                 metaBox.textContent = `${payload.elapsed_s}s · ${payload.tokens.toLocaleString()} tok`;
               }
+              setStreamingState(false, 'READY');
               updateEnvUI(payload.status);
               await refreshFiles(true);
+              break;
             } else if (payload.type === 'error') {
+              streamDone = true;
               bodyBox.textContent += `\\n[Error: ${payload.message}]`;
+              setStreamingState(false, 'READY');
+              break;
             }
           }
         }
+        reader.cancel().catch(() => {});
       } catch (err) {
         bodyBox.textContent += `\\n[Connection error: ${err.message}]`;
       } finally {
@@ -892,6 +911,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     function setStreamingState(active, label) {
       isStreaming = active;
       document.getElementById('send-btn').disabled = active;
+      document.getElementById('fork-btn').disabled = active || !currentEnvId;
       document.getElementById('stream-status').textContent = label;
       const dot = document.getElementById('status-dot');
       if (active) {
@@ -903,8 +923,14 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     async function refreshFiles(autoSelectPreview = false) {
       if (!currentEnvId) return;
-      const res = await fetch(`/api/files?env_id=${encodeURIComponent(currentEnvId)}`);
-      const data = await res.json();
+      let data;
+      try {
+        const res = await fetch(`/api/files?env_id=${encodeURIComponent(currentEnvId)}`);
+        if (!res.ok) return;
+        data = await res.json();
+      } catch (_) {
+        return;
+      }
       const listEl = document.getElementById('file-list');
 
       if (!data.files || data.files.length === 0) {
@@ -1188,8 +1214,9 @@ def make_handler(state: StudioState):
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache")
-                self.send_header("Connection", "keep-alive")
+                self.send_header("Connection", "close")
                 self.end_headers()
+                self.close_connection = True
 
                 def send_sse(event_dict: dict[str, Any]) -> None:
                     msg = f"data: {json.dumps(event_dict)}\n\n".encode("utf-8")
@@ -1214,7 +1241,29 @@ def make_handler(state: StudioState):
                     kwargs["previous_interaction_id"] = prev_id
 
                 try:
-                    events = state.client.interactions.create(**kwargs)
+                    try:
+                        events = state.client.interactions.create(**kwargs)
+                    except API_ERRORS as api_exc:
+                        if target_env != "remote" and ("404" in str(api_exc) or "not_found" in str(api_exc).lower()):
+                            with state.lock:
+                                state.env_labels.pop(target_env, None)
+                                state.last_interaction_by_env.pop(target_env, None)
+                                if state.current_env_id == target_env:
+                                    state.current_env_id = None
+                            target_env = "remote"
+                            kwargs["environment"] = "remote"
+                            kwargs.pop("previous_interaction_id", None)
+                            send_sse(
+                                {
+                                    "type": "step",
+                                    "kind": "tool",
+                                    "tag": "SANDBOX",
+                                    "detail": "Previous sandbox expired or deleted — provisioning a fresh sandbox...",
+                                }
+                            )
+                            events = state.client.interactions.create(**kwargs)
+                        else:
+                            raise
                     resolved_env: str | None = None if target_env == "remote" else target_env
                     interaction_id: str | None = None
                     tokens = 0
@@ -1293,10 +1342,12 @@ def make_handler(state: StudioState):
                                     "status": state.to_status_dict(),
                                 }
                             )
+                            break
 
                         elif etype == "error":
                             err = getattr(event, "error", None)
                             send_sse({"type": "error", "message": str(getattr(err, "message", err))})
+                            break
 
                 except Exception as exc:
                     send_sse({"type": "error", "message": str(exc)})

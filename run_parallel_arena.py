@@ -50,6 +50,14 @@ import webbrowser
 
 from google import genai
 from google.genai import errors
+try:
+    from google.genai._gaos.lib import compat_errors
+    API_ERRORS: tuple[type[Exception], ...] = (
+        errors.APIError,
+        compat_errors.GeminiNextGenAPIClientError,
+    )
+except ImportError:
+    API_ERRORS = (errors.APIError,)
 
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
 
@@ -631,7 +639,7 @@ def download_sandbox_text(client: genai.Client, env_id: str, filename: str) -> s
         try:
             raw = client.environments.files.download(environment=env_id, path=candidate)
             return raw.decode("utf-8", errors="replace")
-        except errors.APIError:
+        except API_ERRORS:
             continue
     return None
 
@@ -1098,7 +1106,7 @@ def cleanup_sandboxes(
         try:
             client.environments.delete(id=eid)
             deleted += 1
-        except errors.APIError:
+        except API_ERRORS:
             continue
     logger.log("🧹", f"Cleaned up {deleted}/{len(env_ids)} remote sandboxes.")
 

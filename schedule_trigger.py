@@ -40,6 +40,14 @@ import warnings
 
 from google import genai
 from google.genai import errors
+try:
+    from google.genai._gaos.lib import compat_errors
+    API_ERRORS: tuple[type[Exception], ...] = (
+        errors.APIError,
+        compat_errors.GeminiNextGenAPIClientError,
+    )
+except ImportError:
+    API_ERRORS = (errors.APIError,)
 
 # Suppress experimental API warnings from the SDK for cleaner CLI output
 warnings.filterwarnings("ignore", message=".*usage is experimental.*")
@@ -183,7 +191,7 @@ def list_triggers(client: genai.Client) -> int:
             print(f"  • {tid}  [{status}]  name='{name}'  schedule='{sched}' ({tz})  next={next_run}")
         print()
         return 0
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         print(f"❌ Failed to list triggers ({exc.code}): {exc.message}", file=sys.stderr)
         return 1
 
@@ -210,7 +218,7 @@ def list_trigger_executions(client: genai.Client, trigger_id: str) -> int:
             )
         print()
         return 0
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         print(f"❌ Failed to list executions ({exc.code}): {exc.message}", file=sys.stderr)
         return 1
 
@@ -264,7 +272,7 @@ def cleanup_trigger(
     try:
         client.triggers.delete(id=trigger_id)
         logger.log("✓", f"Trigger {trigger_id} deleted cleanly.")
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         logger.log("⚠️", f"Failed to delete trigger {trigger_id} ({exc.code}): {exc.message}")
 
 
@@ -284,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
             client.triggers.delete(id=args.delete)
             print(f"🧹 Deleted trigger: {args.delete}")
             return 0
-        except errors.APIError as exc:
+        except API_ERRORS as exc:
             print(f"❌ Failed to delete trigger ({exc.code}): {exc.message}", file=sys.stderr)
             return 1
 
@@ -350,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return 0 if all(checks.values()) else 1
 
-    except errors.APIError as exc:
+    except API_ERRORS as exc:
         err_str = str(exc)
         logger.log("❌", f"Trigger creation failed ({exc.code}): {exc.message}")
         if "github-production" in err_str.lower() or "credential" in err_str.lower():
