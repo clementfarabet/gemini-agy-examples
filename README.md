@@ -152,6 +152,8 @@ uv run python run_parallel_arena.py --forks 4 \
 
 A zero-dependency local web application (`http://127.0.0.1:8080`) that pairs a **Split-Screen Agent Chat** with a **Live `/workspace` File Explorer** and **Live App Preview Canvas** directly backed by the remote Linux cloud sandbox:
 
+![Antigravity Web Studio](web_studio_screenshot.png)
+
 - **Left Pane — Live Agent Stream**: Multi-turn chat with real-time SSE progress pills (`BashToolCall`, `WriteToolCall`, `WebSearchToolCall`, collapsible reasoning thoughts) and starter prompt templates.
 - **Right Pane — Live Preview Canvas & Code Inspector**: Automatically detects `.html` / `.svg` files created in `/workspace` (especially `/workspace/index.html`) and renders them live inside an interactive iframe via a built-in sandbox file proxy (`/sandbox/<env_id>/<path>`), alongside a raw source code viewer and local file download button.
 - **Top Bar — 1-Click Sandbox Forking & Switching**: Click **Fork Sandbox** to clone the current container's `/workspace` filesystem (`from_environment`) and test a radical UI or code direction on a branch without losing the original state.
